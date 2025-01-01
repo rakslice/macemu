@@ -293,7 +293,7 @@ static bool ParseCueSheet(FILE *fh, CueSheet *cs, const char *cuefile)
 				filename = strtok(NULL, "\"\t\n\r");
 				filetype = strtok(NULL, " \"\t\n\r");
 				if (strcmp("BINARY", filetype)) {
-					D(bug("Not binary file %s", filetype));
+					D(bug("Not binary file %s\n", filetype));
 					goto fail;
 				}
 				else {
@@ -347,7 +347,7 @@ static bool ParseCueSheet(FILE *fh, CueSheet *cs, const char *cuefile)
 				} else if (!strcmp("AUDIO", field)) {
 					curr->tcf = AUDIO;
 				} else {
-					D(bug("Unexpected track type %s", field));
+					D(bug("Unexpected track type %s\n", field));
 					goto fail;
 				}
 
@@ -360,7 +360,7 @@ static bool ParseCueSheet(FILE *fh, CueSheet *cs, const char *cuefile)
 
 				field = strtok(NULL, " \t\n\r");
 				if (1 != sscanf(field, "%d", &i_index)) {
-					D(bug("Expected index number"));
+					D(bug("Expected index number\n"));
 					goto fail;
 				}
 
@@ -825,7 +825,7 @@ bool CDPlay_bincue(void *fh, uint8 start_m, uint8 start_s, uint8 start_f,
 		if (player->audio_enabled) {
 			player->audiostatus = CDROM_AUDIO_PLAY;
 #ifdef OSX_CORE_AUDIO
-			D(bug("starting os x sound"));
+			D(bug("starting os x sound\n"));
 			player->soundoutput.setCallback(bincue_core_audio_callback);
 			// should be from current track !
 			player->soundoutput.start(16, 2, 44100);
