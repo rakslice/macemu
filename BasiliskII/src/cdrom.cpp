@@ -317,7 +317,7 @@ void CDROMInit(void)
 	}
 
 	if (drives.empty()) {
-	    // create a placeholder drive for images
+	    D(bug("Creating a placeholder cd-rom drive for images\n"));
 	    drives.push_back(cdrom_drive_info());
 	    drives.begin()->init_null = true;
 	}
