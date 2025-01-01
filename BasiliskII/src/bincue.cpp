@@ -454,6 +454,8 @@ static bool LoadCueSheet(const char *cuefile, CueSheet *cs)
 		tlast->length = buf.st_size/cs->raw_sector_size
 						- tlast->start + totalPregap;
 
+		D(bug("CD audio data file %s size %ld\n", cs->binfile, buf.st_size));
+
 		if (tlast->length < 0) {
 			D(bug("Binary file too short \n"));
  		  	goto fail;	
@@ -482,6 +484,8 @@ static bool LoadCueSheet(const char *cuefile, CueSheet *cs)
 
 void *open_bincue(const char *name)
 {
+	D(bug("open_bincue\n"));
+
 	CueSheet *cs = (CueSheet *) malloc(sizeof(CueSheet));
 	if (!cs) {
 		D(bug("malloc failed\n"));
@@ -516,6 +520,8 @@ void *open_bincue(const char *name)
 
 void close_bincue(void *fh)
 {
+	D(bug("close_bincue\n"));
+
 	CueSheet *cs = (CueSheet *) fh;
 	CDPlayer *player = CSToPlayer(cs);
 	
@@ -706,6 +712,7 @@ void CDPause_playing(CDPlayer* player) {
 
 bool CDPause_bincue(void *fh)
 {
+	D(bug("CDPause_bincue\n"));
 	CueSheet *cs = (CueSheet *) fh;
 	CDPlayer *player = CSToPlayer(cs);
 	
@@ -723,6 +730,7 @@ bool CDPause_bincue(void *fh)
 
 bool CDStop_bincue(void *fh)
 {
+	D(bug("CDStop_bincue\n"));
 	CueSheet *cs = (CueSheet *) fh;
 	CDPlayer *player = CSToPlayer(cs);
 	
@@ -744,6 +752,7 @@ bool CDStop_bincue(void *fh)
 
 bool CDResume_bincue(void *fh)
 {
+	D(bug("CDResume_bincue\n"));
 	CueSheet *cs = (CueSheet *) fh;
 	CDPlayer *player = CSToPlayer(cs);
 	
@@ -762,6 +771,7 @@ bool CDResume_bincue(void *fh)
 bool CDPlay_bincue(void *fh, uint8 start_m, uint8 start_s, uint8 start_f,
 				   uint8 end_m, uint8 end_s, uint8 end_f)
 {
+	D(bug("CDPlay_bincue\n"));
 	CueSheet *cs = (CueSheet *) fh;
 	CDPlayer *player = CSToPlayer(cs);
 	
@@ -799,7 +809,7 @@ bool CDPlay_bincue(void *fh, uint8 start_m, uint8 start_s, uint8 start_f,
 
 			player->fileoffset = player->cs->tracks[track].fileoffset;
 
-			D(bug("file offset %d\n", (unsigned int) player->fileoffset));
+			D(bug("  file offset %d\n", (unsigned int) player->fileoffset));
 
 			// fix up file offset if beyond the silence bytes
 
@@ -809,7 +819,7 @@ bool CDPlay_bincue(void *fh, uint8 start_m, uint8 start_s, uint8 start_f,
 									   player->cs->tracks[track].pregap) * cs->raw_sector_size;
 
 			FramesToMSF(player->cs->tracks[track].start, &msf);
-			D(bug("CDPlay_bincue track %02d start %02d:%02d:%02d silence %d",
+			D(bug("CDPlay_bincue: track %02d start %02d:%02d:%02d silence %d",
 				player->cs->tracks[track].number, msf.m, msf.s, msf.f,
 				player->silence/cs->raw_sector_size));
 			D(bug(" Stop %02u:%02u:%02u\n", end_m, end_s, end_f));
