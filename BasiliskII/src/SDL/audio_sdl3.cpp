@@ -127,6 +127,9 @@ static bool open_sdl_audio(void)
 }
 
 static bool close_sdl_audio() {
+#if defined(BINCUE)
+	CloseAudio_bincue();
+#endif
 	if (main_open_sdl_stream) {
 		SDL_DestroyAudioStream(main_open_sdl_stream);
 		main_open_sdl_stream = NULL;
