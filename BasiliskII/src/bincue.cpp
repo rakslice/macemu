@@ -494,6 +494,7 @@ void *open_bincue(const char *name)
 		player->volume_left = 0;
 		player->volume_right = 0;
 		player->volume_mono = 0;
+		bug(" player=0x%p volume=%d\n", player, player->volume_mono);
 #ifdef OSX_CORE_AUDIO
 		player->audio_enabled = true;
 #endif
@@ -974,7 +975,7 @@ void MixAudio_bincue(uint8 *stream, int stream_len, int volume)
 				extern SDL_AudioSpec audio_spec;
 				uint8 converted[stream_len];
 				SDL_GetAudioStreamData(player->stream, converted, stream_len);
-				SDL_MixAudio(stream, converted, audio_spec.format, stream_len, player->volume_mono);
+				SDL_MixAudio(stream, converted, audio_spec.format, stream_len, (float)player->volume_mono/128);
 			}
 #else
 			if (buf)
