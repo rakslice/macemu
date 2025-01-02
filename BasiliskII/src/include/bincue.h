@@ -41,6 +41,7 @@ extern void CDGetVol_bincue(void *, uint8 *, uint8 *);
 #ifdef USE_SDL_AUDIO
 extern void OpenAudio_bincue(int, int, int, uint8, int);
 extern void MixAudio_bincue(uint8 *, int, int);
+extern void CloseAudio_bincue();
 #endif
 
 #endif
