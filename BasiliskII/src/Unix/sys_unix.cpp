@@ -845,6 +845,7 @@ loff_t SysGetFileSize(void *arg)
 
 void SysEject(void *arg)
 {
+	D(bug("SysEject eject disc\n"));
 	mac_file_handle *fh = (mac_file_handle *)arg;
 	if (!fh)
 		return;
@@ -1279,6 +1280,7 @@ bool SysCDGetPosition(void *arg, uint8 *pos)
 
 bool SysCDPlay(void *arg, uint8 start_m, uint8 start_s, uint8 start_f, uint8 end_m, uint8 end_s, uint8 end_f)
 {
+	D(bug("SysCDPlay\n"));
 	mac_file_handle *fh = (mac_file_handle *)arg;
 	if (!fh)
 		return false;
@@ -1321,6 +1323,7 @@ bool SysCDPlay(void *arg, uint8 start_m, uint8 start_s, uint8 start_f, uint8 end
 
 bool SysCDPause(void *arg)
 {
+	D(bug("SysCDPause\n"));
 	mac_file_handle *fh = (mac_file_handle *)arg;
 	if (!fh)
 		return false;
@@ -1407,6 +1410,7 @@ bool SysCDStop(void *arg, uint8 lead_out_m, uint8 lead_out_s, uint8 lead_out_f)
 
 bool SysCDScan(void *arg, uint8 start_m, uint8 start_s, uint8 start_f, bool reverse)
 {
+	D(bug("SysCDScan %d m %d s %d f\n", start_m, start_s, start_f));
 	mac_file_handle *fh = (mac_file_handle *)arg;
 	if (!fh)
 		return false;
