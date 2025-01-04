@@ -125,13 +125,14 @@ static const uint8 bcd2bin[256] = {
 
 // Struct for each drive
 struct cdrom_drive_info {
-	cdrom_drive_info() : num(0), fh(NULL), start_byte(0), status(0), drop(false), init_null(false) {}
-	cdrom_drive_info(void *fh_) : num(0), fh(fh_), start_byte(0), status(0), drop(false), init_null(false) {}
+	cdrom_drive_info() : num(0), fh(NULL), vRefNum(0), start_byte(0), status(0), drop(false), init_null(false) {}
+	cdrom_drive_info(void *fh_) : num(0), fh(fh_), vRefNum(0), start_byte(0), status(0), drop(false), init_null(false) {}
 	
 	void close_fh(void) { SysAllowRemoval(fh); Sys_close(fh); }
 	
 	int num;			// Drive number
 	void *fh;			// File handle
+	uint16 vRefNum; 	// vRefNum for finding the drive in calls that refer to it by this
 	int block_size;		// CD-ROM block size
 	int twok_offset;	// Offset of beginning of 2K block to last Prime position
 	loff_t start_byte;	// Start of HFS partition on disk
@@ -165,6 +166,87 @@ uint32 CDROMIconAddr;
 static bool acc_run_called = false;
 
 static std::map<int, void *> remount_map;
+
+static uint16 GetVRefForDriveNum(uint32 vipb, int driveNum) {
+	if (!driveNum) return 0; // avoid hanging in getVolInfo
+
+	D(bug("Getting vRefNum for drive %d\n", driveNum));
+	int name_area = ReadMacInt32(vipb + ioNamePtr);
+	Mac_memset(name_area, 0, 256); // allocated by caller, just clear it
+	WriteMacInt16(vipb + ioVRefNum, driveNum);
+
+	M68kRegisters r;
+	r.a[0] = vipb;
+	Execute68kTrap(0xA007, &r);		// GetVolInfo()
+
+	uint16 result = ReadMacInt16(vipb + ioResult);
+	uint16 vRefNum;
+	if (result == noErr) {
+		vRefNum = ReadMacInt16(vipb + ioVRefNum);
+		D(bug(" Drive %d vRefNum is %d\n", driveNum, vRefNum));
+
+	} else {
+		vRefNum = 0;
+		D(bug(" GetVolInfo returned %d\n", r.d[0]));
+	}
+	return vRefNum;
+}
+
+static void UpdateCDVRefs() {
+	DEBUG_SHOW_DRIVE_QUEUE();
+
+	uint32 vipb = 0;
+	for (drive_vec::iterator info = drives.begin(); info != drives.end(); info++) {
+		D(bug("UpdateCDVRefs: existing drive %d vRefNum %d\n", info->num, info->vRefNum));
+		if (info->vRefNum == 0) {
+			if (vipb == 0) {
+				// Allocate space for things
+				M68kRegisters r;
+				int bytesNeeded = SIZEOF_VolInfo_Params;
+				r.d[0] = bytesNeeded;
+				Execute68kTrap(0xa71e, &r);		// NewPtrSysClear()
+				if (r.a[0] == 0) {
+					D(bug(" Param block alloc failed\n"));
+					return;
+				}
+				vipb = r.a[0];
+				D(bug(" VolInfo Params at %08x\n", vipb));
+
+				// Allocate name buffer
+				r.d[0] = 256;					// Str255: 255 characters + length byte
+				Execute68kTrap(0xa71e, &r);		// NewPtrSysClear()
+				uint32_t name_area = r.a[0];
+				if (r.a[0] == 0) {
+					// free pb
+					r.a[0] = vipb;
+			        Execute68kTrap(0xa01f, &r); // DisposePtr
+			        D(bug(" Name buffer alloc failed\n"));
+					return;
+				}
+				D(bug(" name buffer at %08lx\n", name_area));
+				WriteMacInt32(vipb + ioNamePtr, name_area);
+			} else {
+				D(bug("Using existing space:\n"));
+				D(bug(" HIOParam at %08lx\n", vipb));
+				D(bug(" name buffer at %08lx\n", ReadMacInt32(vipb + ioNamePtr)));
+			}
+
+			info->vRefNum = GetVRefForDriveNum(vipb, info->num);
+		}
+
+	}
+	if (vipb) {
+		M68kRegisters r;
+		// free name buffer
+		r.a[0] = ReadMacInt32(vipb + ioNamePtr);
+		D(bug("Freeing name buf at %08x\n", r.a[0]));
+        Execute68kTrap(0xa01f, &r); // DisposePtr
+		// free volinfo param block
+		r.a[0] = vipb;
+		D(bug("Freeing param buf at %08x\n", r.a[0]));
+        Execute68kTrap(0xa01f, &r); // DisposePtr
+	}
+}
 
 /*
  *  Get pointer to drive info or drives.end() if not found
@@ -536,6 +618,8 @@ int16 CDROMPrime(uint32 pb, uint32 dce)
 }
 
 
+static void UpdateCDVRefs();
+
 /*
  *  Driver Control() routine
  */
@@ -563,15 +647,28 @@ int16 CDROMControl(uint32 pb, uint32 dce)
 	}
 	
 	// Drive valid?
-	drive_vec::iterator info = get_drive_info(ReadMacInt16(pb + ioVRefNum));
+	uint16 search_drive_num = ReadMacInt16(pb + ioVRefNum);
+	drive_vec::iterator info = get_drive_info(search_drive_num);
 	if (info == drives.end()) {
 		if (drives.empty()) {
 			return nsDrvErr;
 		} else {
+			if (search_drive_num != 0) {
+				D(bug("Search for drive %hu failed\n", search_drive_num));
+
+				UpdateCDVRefs();
+
+				//D(bug("using last drive %d\n", last_drive_num));
+				return nsDrvErr;
+			}
+
 			// Audio calls tend to end up without correct reference
 			// Real mac would just play first disc, but we can guess correct one from last data call
 			info = get_drive_info(last_drive_num);
 			if (info == drives.end()) return nsDrvErr;
+
+		    //debug_drive_status_info("Chosen", info);
+
 		}
 	}
 	

@@ -74,6 +74,40 @@ int FindFreeDriveNumber(int num)
 }
 
 
+void DebugShowDriveQueueImpl(int debug) {
+	if (!debug) return;
+
+	const uint32 DrvQHdr = 0x308; // drive queue address
+
+	int count = 0;
+
+	bug("current drives:\n");
+
+	uint32 ptrToElem = DrvQHdr + qHead;
+	uint32 e = ReadMacInt32(ptrToElem);
+	while (e) {
+		uint32 next = ReadMacInt32(e + qLink);
+
+		// Recall that the the drive status entry that we want details from
+		// has the drive queue entry (starting with qLink, qType, etc.) in the middle
+
+		uint32 d = e + qLink - dsQLink;
+
+		bug("drive index %d record at %d dsQType %d dsQDrive %d dsQRefNum %d dsQFSID %d dsNewIntf %d next %d\n",
+				count,
+				e,
+                ReadMacInt16(d + dsQType),
+                ReadMacInt16(d + dsQDrive),
+                ReadMacInt16(d + dsQRefNum),
+                ReadMacInt16(d + dsQFSID),
+                ReadMacInt8(d + dsNewIntf),
+                next
+                );
+		e = next;
+		count++;
+	}
+}
+
 /*
  *  Mount volume with given file handle (call this function when you are unable to
  *  do automatic media change detection and the user has to press a special key
