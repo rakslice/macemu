@@ -150,8 +150,7 @@ static unsigned int prestart;
 
 static uint8 silence_byte;
 
-
-// CD Player state; multiple players supported through vectors
+// CD Player state; multiple players supported through list
 
 std::list<CDPlayer*> players;
 
