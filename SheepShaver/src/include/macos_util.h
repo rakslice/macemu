@@ -188,6 +188,13 @@ enum {						/* Large Volume Constants */
 	kMaximumBlocksIn4GB		= 0x007FFFFF
 };
 
+enum { // VolInfo functions params
+	// > name pointer - ioNamePtr
+	// > drive num - ioVRefNum
+	// < vRefNum - ioVRefNum
+	SIZEOF_VolInfo_Params = 64
+};
+
 enum {	// IOParam struct
 	ioTrap = 6,
 	ioCmdAddr = 8,
@@ -209,8 +216,10 @@ enum {	// IOParam struct
 };
 
 enum {	// CntrlParam struct
+	ioCRefNum = 24,
 	csCode = 26,
-	csParam = 28
+	csParam = 28,
+	SIZEOF_CntrlParam = 50
 };
 
 enum {	// DrvSts struct
@@ -361,6 +370,9 @@ extern uint32 TimeToMacTime(time_t t);					// Convert time_t value to MacOS time
 extern time_t MacTimeToTime(uint32 t);				// Convert MacOS time to time_t value
 extern uint32 Mac_sysalloc(uint32 size);				// Allocate block in MacOS system heap zone
 extern void Mac_sysfree(uint32 addr);					// Release block occupied by the nonrelocatable block p
+extern void DebugShowDriveQueueImpl(int debug);
+
+#define DEBUG_SHOW_DRIVE_QUEUE() DebugShowDriveQueueImpl(DEBUG)
 
 // Construct four-character-code from string
 #define FOURCC(a,b,c,d) (((uint32)(a) << 24) | ((uint32)(b) << 16) | ((uint32)(c) << 8) | (uint32)(d))
