@@ -952,6 +952,7 @@ bool CDScan_bincue(void *fh, uint8 start_m, uint8 start_s, uint8 start_f, bool r
 			int goto_frame = MSFToFrames(msf);
 			player->audioposition += (goto_frame - current_frame) * player->cs->raw_sector_size;
 		}
+		UNLOCK_BINCUE;
 		return true;
 	}
 	UNLOCK_BINCUE;
