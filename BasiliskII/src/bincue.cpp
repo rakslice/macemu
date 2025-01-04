@@ -557,6 +557,7 @@ void *open_bincue(const char *name)
 		player->volume_left = 0;
 		player->volume_right = 0;
 		player->volume_mono = 0;
+		bug(" player=0x%p volume=%d\n", player, player->volume_mono);
 #ifdef OSX_CORE_AUDIO
 		player->audio_enabled = true;
 #endif
