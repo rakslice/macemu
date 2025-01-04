@@ -167,6 +167,9 @@ static bool acc_run_called = false;
 
 static std::map<int, void *> remount_map;
 
+static void propose_new_current_drive(int drive_num);
+
+
 static uint16 GetVRefForDriveNum(uint32 vipb, int driveNum) {
 	if (!driveNum) return 0; // avoid hanging in getVolInfo
 
@@ -248,6 +251,19 @@ static void UpdateCDVRefs() {
 	}
 }
 
+static bool is_drive_playing(drive_vec::iterator info) {
+	if (info == drives.end())
+		return false;
+	if (ReadMacInt8(info->status + dsDiskInPlace) == 0)
+	    return false;
+	// check audiostatus
+	uint8 pos[16];
+	if (!SysCDGetPosition(info->fh, pos))
+		return false;
+
+	return pos[1] == 0x11; // audio play in progress
+}
+
 /*
  *  Get pointer to drive info or drives.end() if not found
  */
@@ -257,13 +273,23 @@ static drive_vec::iterator get_drive_info(int num)
 	drive_vec::iterator info, end = drives.end();
 	for (info = drives.begin(); info != end; ++info) {
 		if (info->num == num) {
-			last_drive_num = num;
 			return info;
 		}
 	}
 	return info;
 }
 
+/*
+*  Update the most recently used drive for commands that
+*  don't properly specify a drive
+*/
+void propose_new_current_drive(int new_last_drive_num) {
+	if (last_drive_num != 0) {
+		if (is_drive_playing(get_drive_info(last_drive_num)))
+			return;
+	}
+	last_drive_num = new_last_drive_num;
+}
 
 /*
  *  Find HFS partition, set info->start_byte (0 = no HFS partition)
@@ -404,12 +430,7 @@ void CDROMInit(void)
 	    drives.begin()->init_null = true;
 	}
 
-	if (!drives.empty()) { // set to first drive by default
-		last_drive_num = drives.begin()->num;
-	}
-	else {
-		last_drive_num = 0;
-	}
+	last_drive_num = 0;
 }
 
 void CDROMDrop(const char *path) {
@@ -463,7 +484,7 @@ void CDROMRemount() {
 	for (std::map<int, void *>::iterator i = remount_map.begin(); i != remount_map.end(); ++i)
 		for (drive_vec::iterator info = drives.begin(); info != drives.end(); ++info)
 			if (info->num == i->first) {
-				last_drive_num = i->first;
+				propose_new_current_drive(i->first);
 				info->fh = i->second;
 				break;
 			}
@@ -501,6 +522,7 @@ static void mount_mountable_volumes(void)
 	}
 }
 
+static void debug_drive_status_info(const char * prefix, drive_vec::iterator & info);
 
 /*
  *  Driver Open() routine
@@ -619,6 +641,26 @@ int16 CDROMPrime(uint32 pb, uint32 dce)
 
 
 static void UpdateCDVRefs();
+
+void Mac_dump_mem(uint32 start, size_t len) {
+	if (start + len >= RAMSize) {
+		D(bug("Address out of range: %08x\n", start + len))
+		return;
+	}
+
+	uint8 data[len];
+	Mac2Host_memcpy(data, start, len);
+	for (size_t i = 0; i < len; i++) {
+		if (i % 16 == 0) {
+			if (i)
+				D(bug("\n"));
+			D(bug("%08x  ", start + i));
+		}
+		D(bug("%02x ", data[i]));
+	}
+	D(bug("\n"));
+}
+
 
 /*
  *  Driver Control() routine
@@ -780,7 +822,8 @@ int16 CDROMControl(uint32 pb, uint32 dce)
 		case 100: {		// ReadTOC
 			if (ReadMacInt8(info->status + dsDiskInPlace) == 0)
 				return offLinErr;
-			
+			propose_new_current_drive(info->num);
+
 			int action = ReadMacInt16(pb + csParam);
 			D(bug(" read TOC %d\n", action));
 			switch (action) {
@@ -1155,9 +1198,25 @@ int16 CDROMStatus(uint32 pb, uint32 dce)
 				case FOURCC('v','e','r','s'):	// Version
 					WriteMacInt32(pb + csParam + 4, 0x05208000);
 					break;
-				case FOURCC('d','e','v','t'):	// Device type
+				case FOURCC('d','e','v','t'): {	// Device type
+					// let's try to distinguish the regular os polling from somebody actually interacting with the drive
+					uint32 cmd = ReadMacInt32(pb + ioCmdAddr);
+
+					uint32 namePtr = ReadMacInt32(pb + ioNamePtr);
+					D(bug(" request details cmd=0x%x, name=@%08x:\n", cmd, namePtr));
+
+					if (cmd == 0x40) {
+						Mac_dump_mem(namePtr, 256);
+
+						D(bug(" Let's just dump the whole csParam\n"));
+						Mac_dump_mem(pb, SIZEOF_CntrlParam);
+
+						propose_new_current_drive(info->num);
+					}
+
 					WriteMacInt32(pb + csParam + 4, FOURCC('c','d','r','m'));
 					break;
+				}
 				case FOURCC('i','n','t','f'):	// Interface type
 //					WriteMacInt32(pb + csParam + 4, EMULATOR_ID_4);
 					WriteMacInt32(pb + csParam + 4, FOURCC('a','t','p','i'));
@@ -1191,6 +1250,19 @@ int16 CDROMStatus(uint32 pb, uint32 dce)
 				case FOURCC('c', 'd', '3', 'd'):
 					WriteMacInt16(pb + csParam + 4, 0);
 					break;
+				case FOURCC('m', 'i', 'c', 's'): { // mics kMediaIconSuite
+					D(bug("Let's see what the whole cs param block looks like\n"));
+					Mac_dump_mem(pb, SIZEOF_CntrlParam);
+					uint32 cmd = ReadMacInt32(pb + ioCmdAddr);
+
+					uint32 namePtr = ReadMacInt32(pb + ioNamePtr);
+					D(bug(" request details cmd=0x%x, name=@%08x:\n", cmd, namePtr));
+					Mac_dump_mem(namePtr, 256);
+
+					propose_new_current_drive(info->num);
+
+					return statusErr;
+					break; }
 				default:
 					return statusErr;
 			}
