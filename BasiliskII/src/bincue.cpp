@@ -1009,7 +1009,7 @@ void CDSetVol_bincue(void* fh, uint8 left, uint8 right) {
 		player->volume_left = (left*128)/255;
 		player->volume_right = (right*128)/255;
 		player->volume_mono = (player->volume_left + player->volume_right)/2; // use avg
-		bug(" player=0x%p volume=%d\n", player, player->volume_mono);
+		D(bug(" player=0x%p volume=%d\n", player, player->volume_mono));
 	}
 	UNLOCK_BINCUE;
 }
@@ -1234,7 +1234,7 @@ static void OpenPlayerStream(CDPlayer * player) {
 	player->volume_left = player->volume_right = player->volume_mono = o.default_cd_player_volume;
 	// audio stream handles converting cd audio to destination output
 	D(bug("Opening player stream\n"))
-	bug(" player=0x%p volume=%d\n", player, player->volume_mono);
+	D(bug(" player=0x%p volume=%d\n", player, player->volume_mono));
 #if SDL_VERSION_ATLEAST(3, 0, 0)
 	SDL_AudioSpec src = { player->cs->big_endian_audio? SDL_AUDIO_S16BE : SDL_AUDIO_S16LE, 2, 44100 };
 	SDL_AudioSpec dst = { (SDL_AudioFormat)o.format, o.channels, o.freq };
