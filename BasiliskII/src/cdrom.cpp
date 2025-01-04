@@ -427,6 +427,7 @@ void CDROMInit(void)
 	const char *str;
 	while ((str = PrefsFindString("cdrom", index++)) != NULL) {
 		void *fh = Sys_open(str, true, true);
+		D(bug("CDROM Init saw %s\n", str));
 		if (fh)
 			drives.push_back(cdrom_drive_info(fh));
 	}
@@ -506,6 +507,7 @@ void CDROMRemount() {
 
 static void mount_mountable_volumes(void)
 {
+	//D(bug("mount mountable\n"));
 	drive_vec::iterator info, end = drives.end();
 	for (info = drives.begin(); info != end; ++info) {
 		
@@ -519,7 +521,7 @@ static void mount_mountable_volumes(void)
 		
 		// Mount disk if flagged
 		if (info->to_be_mounted) {
-			D(bug(" mounting drive %d\n", info->num));
+			D(bug(" cd mounting drive %d\n", info->num));
 			M68kRegisters r;
 			r.d[0] = info->num;
 			r.a[0] = 7;	// diskEvent
@@ -537,7 +539,7 @@ static void debug_drive_status_info(const char * prefix, drive_vec::iterator & i
 
 int16 CDROMOpen(uint32 pb, uint32 dce)
 {
-	D(bug("CDROMOpen\n"));
+	D(bug("CDROMOpen dce %d\n", dce));
 	
 	// Set up DCE
 	WriteMacInt32(dce + dCtlPosition, 0);
@@ -587,6 +589,9 @@ int16 CDROMOpen(uint32 pb, uint32 dce)
 			r.d[0] = (info->num << 16) | (CDROMRefNum & 0xffff);
 			r.a[0] = info->status + dsQLink;
 			Execute68kTrap(0xa04e, &r);		// AddDrive()
+
+			debug_drive_status_info("New", info);
+
 		}
 	}
 
@@ -647,6 +652,17 @@ int16 CDROMPrime(uint32 pb, uint32 dce)
 }
 
 
+static void debug_drive_status_info(const char * prefix, drive_vec::iterator & info) {
+	D(bug("%s drive dsQType %d dsQDrive %d dsQRefNum %d dsQFSID %d dsNewIntf %d\n",
+            prefix,
+            ReadMacInt16(info->status + dsQType),
+            ReadMacInt16(info->status + dsQDrive),
+            ReadMacInt16(info->status + dsQRefNum),
+            ReadMacInt16(info->status + dsQFSID),
+            ReadMacInt8(info->status + dsNewIntf)
+            ));
+}
+
 static void UpdateCDVRefs();
 
 void Mac_dump_mem(uint32 start, size_t len) {
@@ -676,7 +692,7 @@ void Mac_dump_mem(uint32 start, size_t len) {
 int16 CDROMControl(uint32 pb, uint32 dce)
 {
 	uint16 code = ReadMacInt16(pb + csCode);
-	D(bug("CDROMControl %d\n", code));
+	D(bug("CDROMControl code=%d pb=%d ioVRefNum=%d\n", code, pb, ReadMacInt16(pb + ioVRefNum)));
 	
 	// General codes
 	switch (code) {
@@ -704,6 +720,9 @@ int16 CDROMControl(uint32 pb, uint32 dce)
 		} else {
 			if (search_drive_num != 0) {
 				D(bug("Search for drive %hu failed\n", search_drive_num));
+
+				D(bug(" Let's just dump the whole csParam\n"));
+				Mac_dump_mem(pb, SIZEOF_CntrlParam);
 
 				UpdateCDVRefs();
 
@@ -754,6 +773,7 @@ int16 CDROMControl(uint32 pb, uint32 dce)
 				WriteMacInt8(info->status + dsDiskInPlace, 0);
 				return noErr;
 			} else {
+				D(bug("  offline\n"));
 				return offLinErr;
 			}
 			
@@ -1200,8 +1220,9 @@ int16 CDROMStatus(uint32 pb, uint32 dce)
 {
 	drive_vec::iterator info = get_drive_info(ReadMacInt16(pb + ioVRefNum));
 	uint16 code = ReadMacInt16(pb + csCode);
-	D(bug("CDROMStatus %d\n", code));
-	
+	D(bug("CDROMStatus code=%d pb=%d ioVRefNum=%d\n",
+		code, pb, ReadMacInt16(pb + ioVRefNum)));
+
 	// General codes (we can get these even if the drive was invalid)
 	switch (code) {
 		case 43: {	// DriverGestalt
@@ -1239,10 +1260,15 @@ int16 CDROMStatus(uint32 pb, uint32 dce)
 //					WriteMacInt32(pb + csParam + 4, 1);
 					break;
 				case FOURCC('b','o','o','t'):	// Boot ID
+					D(bug("Let's see what the whole cs param block looks like\n"));
+					Mac_dump_mem(pb, SIZEOF_CntrlParam);
+
 					if (info != drives.end())
 						WriteMacInt16(pb + csParam + 4, info->num);
+						//WriteMacInt8(pb + csParam + 4, info->num);
 					else
 						WriteMacInt16(pb + csParam + 4, 0);
+						//WriteMacInt8(pb + csParam + 4, 0);
 					WriteMacInt16(pb + csParam + 6, (uint16)CDROMRefNum);
 					break;
 				case FOURCC('w','i','d','e'):	// 64-bit access supported?
@@ -1296,9 +1322,16 @@ int16 CDROMStatus(uint32 pb, uint32 dce)
 	
 	// Drive valid?
 	if (info == drives.end()) {
+		int search_num = ReadMacInt16(pb + ioVRefNum);
 		if (drives.empty()) {
 			return nsDrvErr;
+//		} else {
+		} else if (search_num == 0) {
+			info = get_drive_info(last_drive_num);
+			if (info == drives.end()) return nsDrvErr;
 		} else {
+//			D(bug("bad ioVrefNum %d\n", search_num));
+//			return nsDrvErr;
 			info = get_drive_info(last_drive_num);
 			if (info == drives.end()) return nsDrvErr;
 		}
