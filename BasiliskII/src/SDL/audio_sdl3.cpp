@@ -115,7 +115,7 @@ static bool open_sdl_audio(void)
 	audio_spec.channels = audio_channel_counts[audio_channel_count_index];
 	audio_spec.freq = audio_sample_rates[audio_sample_rate_index] >> 16;
 
-	D(bug("Opening SDL audio device stream, freq %d chan %d format %s\n", audio_spec.freq, audio_spec.channels,
+	D(bug("Opening main SDL audio stream, freq %d chan %d format %s\n", audio_spec.freq, audio_spec.channels,
 		SDL_GetAudioFormatName(audio_spec.format)));
 
 	assert(!main_open_sdl_stream);

@@ -103,11 +103,13 @@ static bool open_sdl_audio(void)
 	audio_spec.userdata = NULL;
 
 	// Open the audio device, forcing the desired format
+	D(bug("Opening main SDL audio stream, freq %d chan %d format %d\n", audio_spec.freq, audio_spec.channels,
+		audio_spec.format));
 	if (SDL_OpenAudio(&audio_spec, NULL) < 0) {
 		fprintf(stderr, "WARNING: Cannot open audio: %s\n", SDL_GetError());
 		return false;
 	}
-	
+
 #if SDL_VERSION_ATLEAST(2,0,0)
 	// HACK: workaround a bug in SDL pre-2.0.6 (reported via https://bugzilla.libsdl.org/show_bug.cgi?id=3710 )
 	// whereby SDL does not update audio_spec.size
@@ -238,15 +240,58 @@ static void stream_func(void *arg, uint8 *stream, int stream_len)
 		// Get size of audio data
 		uint32 apple_stream_info = ReadMacInt32(audio_data + adatStreamInfo);
 		if (apple_stream_info && !main_mute && !speaker_mute) {
+
+			// Verify the format parameters of this SoundComponentData
+			bool mono_to_stereo_u8 = false;
+
+			uint16 source_channels = ReadMacInt16(apple_stream_info + scd_numChannels);
+
+			int source_sample_size;
+			switch (ReadMacInt32(apple_stream_info + scd_format)) {
+				case FOURCC('t','w','o','s'):
+					source_sample_size = 16;
+					break;
+				case FOURCC('r','a','w',' '):
+					source_sample_size = 8;
+					break;
+				default:
+					goto silence;
+			}
+
+			if (source_sample_size != AudioStatus.sample_size)
+				goto silence;
+
+			if (source_sample_size = 8 && source_channels == 1 && AudioStatus.channels == 2)
+				mono_to_stereo_u8 = true; // enable special handling to make this one work
+			else if (source_channels != AudioStatus.channels)
+				goto silence;
+
+			if (ReadMacInt32(apple_stream_info + scd_sampleRate) != AudioStatus.sample_rate)
+				goto silence;
+
 			int work_size = ReadMacInt32(apple_stream_info + scd_sampleCount) * (AudioStatus.sample_size >> 3) * AudioStatus.channels;
+
 			D(bug("stream: work_size %d\n", work_size));
 			if (work_size > stream_len)
 				work_size = stream_len;
 			if (work_size == 0)
 				goto silence;
 
+			if (mono_to_stereo_u8) {
+				work_size /= 2;
+			}
+
 			// Send data to audio device
 			Mac2Host_memcpy(audio_mix_buf, ReadMacInt32(apple_stream_info + scd_buffer), work_size);
+			if (mono_to_stereo_u8) {
+				uint8 * pos = audio_mix_buf + work_size - 1;
+				uint8 * new_pos = audio_mix_buf + 2 * work_size - 1;
+				while (pos >= audio_mix_buf) {
+					*new_pos-- = *pos;
+					*new_pos-- = *pos--;
+				}
+				work_size *= 2;
+			}
 			memset((uint8 *)stream, silence_byte, stream_len);
 			SDL_MixAudio(stream, audio_mix_buf, work_size, get_audio_volume());
 
