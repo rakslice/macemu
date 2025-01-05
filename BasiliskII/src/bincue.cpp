@@ -171,13 +171,15 @@ static int calls_since_lock_count = 0;
 static bool locked = false;
 
 #if defined(USE_SDL_AUDIO)
-
 /* Threading notes for the SDL audio case:
  * - all MixAudio_bincue calls come from an SDL-owned thread
  * - all other calls come from the main thread
  */
+#if !SDL_VERSION_ATLEAST(3, 0, 0)
+#define SDL_Mutex SDL_mutex
+#endif
   static SDL_Mutex *bincue_mutex;
-  #define LOCK_BINCUE { if (SHOW_LOCKING) SHOWFILE("Doing LockBincue"); SDL_LockMutex(bincue_mutex); calls_since_lock_count = 0; locked = true;}
+  #define LOCK_BINCUE { if (SHOW_LOCKING) SHOWFILE("Doing LockBincue"); SDL_LockMutex(bincue_mutex); calls_since_lock_count = 0; locked = true; }
   #define UNLOCK_BINCUE { if (SHOW_LOCKING) SHOWFILE("Doing UnlockBincue"); calls_since_unlock_count = 0; locked = false; SDL_UnlockMutex(bincue_mutex); }
 #else
 
