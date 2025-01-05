@@ -103,7 +103,7 @@ static bool open_sdl_audio(void)
 	audio_spec.channels = audio_channel_counts[audio_channel_count_index];
 	audio_spec.freq = audio_sample_rates[audio_sample_rate_index] >> 16;
 
-	D(bug("Opening SDL audio device stream, freq %d chan %d format %s\n", audio_spec.freq, audio_spec.channels,
+	D(bug("Opening main SDL audio stream, freq %d chan %d format %s\n", audio_spec.freq, audio_spec.channels,
 		SDL_GetAudioFormatName(audio_spec.format)));
 
 	assert(!main_open_sdl_stream);
@@ -278,12 +278,51 @@ static void SDLCALL stream_func(void *, SDL_AudioStream *stream, int stream_len,
 				if (work_size == 0)
 					break;
 				uint8 buf[work_size];
+
+				// Verify the format parameters of this SoundComponentData
+				bool mono_to_stereo_u8 = false;
+
+				int source_channels = ReadMacInt16(apple_stream_info + scd_numChannels);
+
+				int source_sample_size;
+				switch (ReadMacInt32(apple_stream_info + scd_format)) {
+					case FOURCC('t','w','o','s'):
+						source_sample_size = 16;
+						break;
+					case FOURCC('r','a','w',' '):
+						source_sample_size = 8;
+						break;
+					default:
+						source_sample_size = -1;
+						break;
+				}
+
+				if (source_sample_size != AudioStatus.sample_size)
+					break;
+
+				if (source_sample_size = 8 && source_channels == 1 && AudioStatus.channels == 2)
+					mono_to_stereo_u8 = true; // enable special handling to make this one work
+				else if (source_channels != AudioStatus.channels)
+					break;
+
+				if (ReadMacInt32(apple_stream_info + scd_sampleRate) != AudioStatus.sample_rate)
+					break;
+
+				if (mono_to_stereo_u8) {
+					work_size /= 2;
+				}
 				if (!main_mute && !speaker_mute) {
 					Mac2Host_memcpy(buf, ReadMacInt32(apple_stream_info + scd_buffer), work_size);
 				} else {
 					memset(buf, silence_byte, work_size);
 				}
-				for (int i = 0; i < work_size; i++) q.push(buf[i]);
+
+				if (mono_to_stereo_u8) {
+					for (int i = 0; i < work_size; i++) { q.push(buf[i]); q.push(buf[i]); }
+				} else {
+					for (int i = 0; i < work_size; i++) q.push(buf[i]);
+				}
+
 			}
 			else {
 				while (!q.empty()) q.pop();
