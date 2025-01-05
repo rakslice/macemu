@@ -911,8 +911,8 @@ bool CDPlay_bincue(void *fh, uint8 start_m, uint8 start_s, uint8 start_f,
 
 		int cur_position_frames = (player->audioposition / cs->raw_sector_size) + player->audiostart;
 
-		player->audiostart = MSFToFrames({start_m, start_s, start_f});
-		player->audioend   = MSFToFrames({end_m, end_s, end_f});
+		player->audiostart = MSFToFrames((MSF){start_m, start_s, start_f});
+		player->audioend   = MSFToFrames((MSF){end_m, end_s, end_f});
 
 		track = PositionToTrack(player->cs, player->audiostart);
 
@@ -972,7 +972,7 @@ bool CDScan_bincue(void *fh, uint8 start_m, uint8 start_s, uint8 start_f, bool r
 	CDPlayer *player = CSToPlayer(cs);
 	
 	if (cs && player) {
-		int goto_frame = MSFToFrames({start_m, start_s, start_f});
+		int goto_frame = MSFToFrames((MSF){start_m, start_s, start_f});
 
 		int scan_starting_track = PositionToTrack(cs, goto_frame);
 		if (cs->tracks[scan_starting_track].tcf != AUDIO) {
@@ -1281,7 +1281,7 @@ void OpenAudio_bincue(int freq, int format, int channels, uint8 silence, int vol
 {
 	LOCK_BINCUE;
 	// save output audio params
-	current_output_settings = {freq, format, channels, volume};
+	current_output_settings = (OutputSettings){freq, format, channels, volume};
 	have_current_output_settings = true;
 #if SDL_VERSION_ATLEAST(3, 0, 0)
 	D(bug("OpenAudio_bincue freq %d format %s channels %d volume %d\n",
