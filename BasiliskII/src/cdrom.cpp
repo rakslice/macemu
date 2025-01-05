@@ -293,7 +293,6 @@ static void read_toc(cdrom_drive_info &info)
 
 static bool position2msf(const cdrom_drive_info &info, uint16 postype, uint32 pos, bool stopping, uint8 &m, uint8 &s, uint8 &f)
 {
-	bool ret = false;
 	switch (postype) {
 		case 0:
 			m = pos / (60 * 75);
