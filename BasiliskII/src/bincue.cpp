@@ -148,6 +148,18 @@ typedef struct {
 static unsigned int totalPregap;
 static unsigned int prestart;
 
+// Current audio output settings
+
+struct OutputSettings {
+	int freq;
+	int format; // SDL format
+	int channels;
+	int default_cd_player_volume;
+};
+
+static bool have_current_output_settings = false;
+static OutputSettings current_output_settings;
+
 // Set up a locking implementation to deal with audio requests concurrent to other functionality
 
 #define SHOW_LOCKING 0
@@ -1213,16 +1225,6 @@ void MixAudio_bincue(uint8 *stream, int stream_len)
 	}
 	UNLOCK_BINCUE;
 }
-
-struct OutputSettings {
-	int freq;
-	int format; // SDL format
-	int channels;
-	int default_cd_player_volume;
-};
-
-static bool have_current_output_settings = false;
-static OutputSettings current_output_settings;
 
 static void OpenPlayerStream(CDPlayer * player) {
 	if (!have_current_output_settings) {
