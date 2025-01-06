@@ -46,6 +46,9 @@
 
 #define MAC_MAX_VOLUME 0x0100
 
+#define INTERRUPT_STREAM_QUEUE_TARGET_MS 5
+#define MAIN_STREAM_EXTRA_DATA_MARGIN_MS 3
+
 // The currently selected audio parameters (indices in audio_sample_rates[] etc. vectors)
 static int audio_sample_rate_index = 0;
 static int audio_sample_size_index = 0;
@@ -267,8 +270,7 @@ static int interrupt_thread_func(void *data)
 {
 	while (!interrupt_thread_quit) {
 
-	int target_queue_time_ms = 5;
-	int target_queue_size = time_to_stream_bytes(target_queue_time_ms);
+	int target_queue_size = time_to_stream_bytes(INTERRUPT_STREAM_QUEUE_TARGET_MS);
 
 #if MONITOR_INTERRUPT_STREAM
 		static int monitor_stream_count = 0;
@@ -318,7 +320,7 @@ static int interrupt_thread_func(void *data)
 				uint32 source_sample_rate = ReadMacInt32(apple_stream_info + scd_sampleRate);
 				SDL_AudioFormat source_format = (source_sample_size == 8) ? SDL_AUDIO_U8 : SDL_AUDIO_S16BE;
 
-				SDL_AudioSpec current_scd_spec = {source_format, source_channels, source_sample_rate >> 16};
+				SDL_AudioSpec current_scd_spec = {source_format, source_channels, (uint16)(source_sample_rate >> 16)};
 				//bug("scd channels %d sr %d 0x%x >>16%d\n", source_channels, source_sample_rate, source_sample_rate, source_sample_rate>>16);
 
 				SDL_SetAudioStreamFormat(interrupt_stream, &current_scd_spec, NULL);
@@ -360,8 +362,7 @@ static void SDLCALL stream_func(void *, SDL_AudioStream *stream, int stream_len,
 	} else {
 		// We want to supply a little more data than was requested to prevent underruns
 		// Figure out a fraction of a second of data to use
-		int margin_ms = 3;
-		margin = time_to_stream_bytes(margin_ms);
+		margin = time_to_stream_bytes(MAIN_STREAM_EXTRA_DATA_MARGIN_MS);
 		target_queue_size = stream_len + margin;
 	}
 
