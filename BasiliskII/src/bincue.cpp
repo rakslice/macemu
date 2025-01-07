@@ -168,6 +168,15 @@ std::list<CDPlayer*> players;
 
 CDPlayer* currently_playing = NULL;
 
+static void debug_identify_player(const char * pref, CDPlayer* player) {
+	if (player) {
+		D(bug("%s(player=%p cs=%p binfile=%s)\n", pref, player, player->cs, player->cs->binfile));
+	} else {
+		D(bug("%s(null player)\n", pref));
+	}
+}
+
+
 CDPlayer* CSToPlayer(CueSheet* cs)
 {
 	for (std::list<CDPlayer*>::iterator it = players.begin(); it != players.end(); ++it)
@@ -517,6 +526,7 @@ void *open_bincue(const char *name)
 		player->volume_left = 0;
 		player->volume_right = 0;
 		player->volume_mono = 0;
+		D(bug(" player=0x%p volume=%d\n", player, player->volume_mono));
 #ifdef OSX_CORE_AUDIO
 		player->audio_enabled = true;
 #endif
@@ -722,14 +732,20 @@ bool GetPosition_bincue(void *fh, uint8 *pos)
 		*pos++ = rel.s;
 		*pos++ = rel.f;
 //		*pos++ = 0;
-//		D(bug("CDROM position %02d:%02d:%02d track %02d\n", abs.m, abs.s, abs.f, trackno));
+
+		static int last_fpos = 0;
+		if (last_fpos != fpos) {
+			D(bug("CDROM position %02d:%02d:%02d track %02d fpos %d\n", abs.m, abs.s, abs.f, trackno, fpos));
+		}
+		last_fpos = fpos;
 		return true;
 	}
 	else
 		return false;
 }
 
-void CDPause_playing(CDPlayer* player) {
+
+static void CDPause_other_playing(CDPlayer* player) {
 	if (currently_playing && currently_playing != player) {
 		currently_playing->audiostatus = CDROM_AUDIO_PAUSED;
 		currently_playing = NULL;
@@ -738,17 +754,16 @@ void CDPause_playing(CDPlayer* player) {
 
 bool CDPause_bincue(void *fh)
 {
-	D(bug("CDPause_bincue\n"));
 	CueSheet *cs = (CueSheet *) fh;
 	CDPlayer *player = CSToPlayer(cs);
-	
-	if (cs && player) {
-		// Pause another player if needed
-		CDPause_playing(player);
+	debug_identify_player("CDPause_bincue  ", player);
 
+	if (cs && player) {
 		// doesn't matter if it was playing, just ensure it's now paused
-		player->audiostatus = CDROM_AUDIO_PAUSED;
-		currently_playing = NULL;
+		if (currently_playing == player) {
+			player->audiostatus = CDROM_AUDIO_PAUSED;
+			currently_playing = NULL;
+		}
 		return true;
 	}
 	return false;
@@ -756,21 +771,21 @@ bool CDPause_bincue(void *fh)
 
 bool CDStop_bincue(void *fh)
 {
-	D(bug("CDStop_bincue\n"));
 	CueSheet *cs = (CueSheet *) fh;
 	CDPlayer *player = CSToPlayer(cs);
-	
+	debug_identify_player("CDStop_bincue  ", player);
+
 	if (cs && player) {
-		// Pause another player if needed
-		CDPause_playing(player);
-		
+		if (player == currently_playing) {
+			currently_playing = NULL;
+		}
+
 #ifdef OSX_CORE_AUDIO
 		player->soundoutput.stop();
 #endif
 		if (player->audiostatus != CDROM_AUDIO_INVALID)
 			player->audiostatus = CDROM_AUDIO_NO_STATUS;
 
-		currently_playing = NULL;
 		return true;
 	}
 	return false;
@@ -778,13 +793,13 @@ bool CDStop_bincue(void *fh)
 
 bool CDResume_bincue(void *fh)
 {
-	D(bug("CDResume_bincue\n"));
 	CueSheet *cs = (CueSheet *) fh;
 	CDPlayer *player = CSToPlayer(cs);
-	
+	debug_identify_player("CDResume_bincue  ", player);
+
 	if (cs && player) {
 		// Pause another player if needed
-		CDPause_playing(player);
+		CDPause_other_playing(player);
 
 		// doesn't matter if it was paused, just ensure this one plays now
 		player->audiostatus = CDROM_AUDIO_PLAY;
@@ -797,13 +812,13 @@ bool CDResume_bincue(void *fh)
 bool CDPlay_bincue(void *fh, uint8 start_m, uint8 start_s, uint8 start_f,
 				   uint8 end_m, uint8 end_s, uint8 end_f)
 {
-	D(bug("CDPlay_bincue\n"));
 	CueSheet *cs = (CueSheet *) fh;
 	CDPlayer *player = CSToPlayer(cs);
-	
+	debug_identify_player("CDPlay_bincue ", player);
+
 	if (cs && player) {
 		// Pause another player if needed
-		CDPause_playing(player);
+		CDPause_other_playing(player);
 
 		int track;
 		MSF msf;
@@ -873,6 +888,7 @@ bool CDPlay_bincue(void *fh, uint8 start_m, uint8 start_s, uint8 start_f,
 }
 
 bool CDScan_bincue(void *fh, uint8 start_m, uint8 start_s, uint8 start_f, bool reverse) {
+	D(bug("CDScan_bincue start %d m %d s %d f, reverse=%d\n", start_m, start_s, start_f, reverse));
 	CueSheet *cs = (CueSheet *) fh;
 	CDPlayer *player = CSToPlayer(cs);
 	
@@ -901,13 +917,16 @@ bool CDScan_bincue(void *fh, uint8 start_m, uint8 start_s, uint8 start_f, bool r
 void CDSetVol_bincue(void* fh, uint8 left, uint8 right) {
 	CueSheet *cs = (CueSheet *) fh;
 	CDPlayer *player = CSToPlayer(cs);
-	
+	debug_identify_player("CDSetVol_bincue ", player);
+	D(bug(" channels set to %d, %d\n", left, right));
+
 	if (cs && player) {
 		// Convert from classic Mac's 0-255 to 0-128;
 		// calculate mono mix as well in place of panning
 		player->volume_left = (left*128)/255;
 		player->volume_right = (right*128)/255;
 		player->volume_mono = (player->volume_left + player->volume_right)/2; // use avg
+		D(bug(" player=0x%p volume=%d\n", player, player->volume_mono));
 	}
 }
 
@@ -1043,6 +1062,7 @@ static void OpenPlayerStream(CDPlayer * player) {
 	player->volume_left = player->volume_right = player->volume_mono = o.default_cd_player_volume;
 	// audio stream handles converting cd audio to destination output
 	D(bug("Opening player stream\n"))
+	D(bug(" player=0x%p volume=%d\n", player, player->volume_mono));
 #if SDL_VERSION_ATLEAST(3, 0, 0)
 	SDL_AudioSpec src = { player->cs->big_endian_audio? SDL_AUDIO_S16BE : SDL_AUDIO_S16LE, 2, 44100 };
 	SDL_AudioSpec dst = { (SDL_AudioFormat)o.format, o.channels, o.freq };
