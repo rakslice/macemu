@@ -226,6 +226,8 @@ void audio_exit_stream()
 
 static void stream_func(void *arg, uint8 *stream, int stream_len)
 {
+	Delay_usec(10000);
+
 	if (AudioStatus.num_sources) {
 		// Trigger audio interrupt to get new buffer
 		D(bug("stream: triggering irq\n"));
