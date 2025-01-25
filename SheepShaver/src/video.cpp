@@ -125,7 +125,7 @@ bool VideoActivated(void)
 bool VideoSnapshot(int xsize, int ysize, uint8 *p)
 {
 	if (display_type == DIS_WINDOW) {
-		uint8 *screen = (uint8 *)private_data->saveBaseAddr;
+		uint8 *screen = Mac2HostAddr(private_data->saveBaseAddr);
 		uint32 row_bytes = VModes[cur_mode].viRowBytes;	
 		uint32 y2size = VModes[cur_mode].viYsize;
 		uint32 x2size = VModes[cur_mode].viXsize;

@@ -1375,7 +1375,7 @@ static void *emul_func(void *arg)
 	ready_for_signals = true;
 
 	// Decrease priority, so more time-critical things like audio will work better
-	nice(1);
+	int ignore_result = nice(1);
 
 	// Jump to ROM boot routine
 	D(bug("Jumping to ROM\n"));

@@ -271,9 +271,17 @@ void set_finfo(const char *path, uint32 finfo, uint32 fxinfo, bool is_dir)
 		return;
 
 	// Write file
-	write(fd, Mac2HostAddr(finfo), SIZEOF_FInfo);
-	if (fxinfo)
-		write(fd, Mac2HostAddr(fxinfo), SIZEOF_FXInfo);
+	int result = write(fd, Mac2HostAddr(finfo), SIZEOF_FInfo);
+	if (result != SIZEOF_FInfo) {
+		bug("failed to write finfo for %s\n", path);
+	} else {
+		if (fxinfo) {
+			result = write(fd, Mac2HostAddr(fxinfo), SIZEOF_FXInfo);
+			if (result != SIZEOF_FXInfo) {
+				bug("failed to write fxinfo for %s\n", path);
+			}
+		}
+	}
 	close(fd);
 }
 

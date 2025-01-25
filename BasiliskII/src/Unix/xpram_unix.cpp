@@ -42,7 +42,11 @@ void LoadXPRAM(const char* vmdir)
 	int fd;
 	if ((fd = open(xpram_name.c_str(), O_RDONLY)) >= 0)
 	{
-		read(fd, XPRAM, XPRAM_SIZE);
+		int result = read(fd, XPRAM, XPRAM_SIZE);
+		if (result != XPRAM_SIZE) {
+			fprintf(stderr, "WARNING: Unable to read %s (%s)\n",
+					xpram_name.c_str(), strerror(errno));
+		}
 		close(fd);
 	}
 }
@@ -57,7 +61,11 @@ void SaveXPRAM(void)
 	int fd;
 	if ((fd = open(xpram_name.c_str(), O_WRONLY | O_CREAT, 0666)) >= 0)
 	{
-		write(fd, XPRAM, XPRAM_SIZE);
+		int result = write(fd, XPRAM, XPRAM_SIZE);
+		if (result != XPRAM_SIZE) {
+			fprintf(stderr, "WARNING: Unable to write %s (%s)\n",
+					xpram_name.c_str(), strerror(errno));
+		}
 		close(fd);
 	}
 	else

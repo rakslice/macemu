@@ -759,7 +759,7 @@ static void dump_disassembly(const uint32 pc, const int prefix_count, const int 
 	const uint32 base_addr = pc - prefix_count * 4;
 	for (int i = 0; i < count; i++) {
 		const bfd_vma addr = base_addr + i * 4;
-		fprintf(stderr, "%s0x%8llx:  ", addr == pc ? " >" : "  ", addr);
+		fprintf(stderr, "%s0x%8" PRIx64 ":  ", addr == pc ? " >" : "  ", addr);
 		print_insn_ppc(addr, &info);
 		fprintf(stderr, "\n");
 	}
@@ -1082,22 +1082,22 @@ void sheepshaver_cpu::execute_native_op(uint32 selector)
 		EtherIRQ();
 		break;
 	case NATIVE_ETHER_INIT:
-		gpr(3) = InitStreamModule((void *)gpr(3));
+		gpr(3) = InitStreamModule((void *)(uintptr)gpr(3));
 		break;
 	case NATIVE_ETHER_TERM:
 		TerminateStreamModule();
 		break;
 	case NATIVE_ETHER_OPEN:
-		gpr(3) = ether_open((queue_t *)gpr(3), (void *)gpr(4), gpr(5), gpr(6), (void*)gpr(7));
+		gpr(3) = ether_open((queue_t *)(uintptr)gpr(3), (void *)(uintptr)gpr(4), gpr(5), gpr(6), (void*)(uintptr)gpr(7));
 		break;
 	case NATIVE_ETHER_CLOSE:
-		gpr(3) = ether_close((queue_t *)gpr(3), gpr(4), (void *)gpr(5));
+		gpr(3) = ether_close((queue_t *)(uintptr)gpr(3), gpr(4), (void *)(uintptr)gpr(5));
 		break;
 	case NATIVE_ETHER_WPUT:
-		gpr(3) = ether_wput((queue_t *)gpr(3), (mblk_t *)gpr(4));
+		gpr(3) = ether_wput((queue_t *)(uintptr)gpr(3), (mblk_t *)(uintptr)gpr(4));
 		break;
 	case NATIVE_ETHER_RSRV:
-		gpr(3) = ether_rsrv((queue_t *)gpr(3));
+		gpr(3) = ether_rsrv((queue_t *)(uintptr)gpr(3));
 		break;
 	case NATIVE_NQD_SYNC_HOOK:
 		gpr(3) = NQD_sync_hook(gpr(3));

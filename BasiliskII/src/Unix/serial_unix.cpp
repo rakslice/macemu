@@ -585,9 +585,9 @@ bool XSERDPort::open_pty(void)
 		/* Make the pseudo tty our controlling tty. */
 		pty_make_controlling_tty(&slavefd, slave);
 
-		::close(0); dup(slavefd); // Use the slave fd for stdin,
-		::close(1); dup(slavefd); // stdout,
-		::close(2); dup(slavefd); // and stderr.
+		::close(0); if (dup(slavefd)<0) { D(bug("pty fd 0 dup failed\n")) }; // Use the slave fd for stdin,
+		::close(1); if (dup(slavefd)<0) { D(bug("pty fd 1 dup failed\n")) }; // stdout,
+		::close(2); if (dup(slavefd)<0) { D(bug("pty fd 2 dup failed\n")) }; // and stderr.
 
 		// <should we be more paranoid about closing unused fds?>
 		// <should we drop privileges if running setuid?>

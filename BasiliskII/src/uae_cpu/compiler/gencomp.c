@@ -111,7 +111,7 @@ read_counts (void)
     file = fopen ("frequent.68k", "r");
     if (file)
     {
-	fscanf (file, "Total: %lu\n", &total);
+	assert(fscanf (file, "Total: %lu\n", &total) == 1);
 	while (fscanf (file, "%lx: %lu %s\n", &opcode, &count, name) == 3)
 	{
 	    opcode_next_clev[nr] = 4;
@@ -1548,7 +1548,7 @@ gen_opcode (unsigned long int opcode)
 	comprintf("\tm68k_pc_offset=0;\n");
 	comprintf("\tadd_l(PC_P,src);\n");
 
-	comprintf("\tcomp_pc_p=(uae_u8*)get_const(PC_P);\n");
+	comprintf("\tcomp_pc_p=(uae_u8*)(uintptr)get_const(PC_P);\n");
 	break;
      case i_Bcc:
 	genamode (curi->smode, "srcreg", curi->size, "src", 1, 0);
@@ -1583,7 +1583,7 @@ gen_opcode (unsigned long int opcode)
 	switch(curi->cc) {
 	 case 0:  /* Unconditional jump */
 	    comprintf("\tmov_l_rr(PC_P,src);\n"); 
-	    comprintf("\tcomp_pc_p=(uae_u8*)get_const(PC_P);\n");
+	    comprintf("\tcomp_pc_p=(uae_u8*)(uintptr)get_const(PC_P);\n");
 	    break;
 	 case 1: break; /* This is silly! */
 	 case 8: failure; break;  /* Work out details! FIXME */
@@ -2952,7 +2952,7 @@ main (int argc, char **argv)
 
     headerfile = fopen ("comptbl.h", "wb");
     stblfile = fopen ("compstbl.cpp", "wb");
-    freopen ("compemu.cpp", "wb", stdout);
+    assert(freopen ("compemu.cpp", "wb", stdout) != NULL);
 
     fprintf(stblfile, "#if USE_JIT\n");
     printf("#if USE_JIT\n");

@@ -477,13 +477,13 @@ static void mn_zap_pram(...)
 
 // Menu item descriptions
 static GtkItemFactoryEntry menu_items[] = {
-	{(gchar *)GetString(STR_PREFS_MENU_FILE_GTK),		NULL,			NULL,							0, "<Branch>"},
-	{(gchar *)GetString(STR_PREFS_ITEM_START_GTK),		"<control>S",	G_CALLBACK(cb_start),		0, NULL},
+	{(gchar *)GetString(STR_PREFS_MENU_FILE_GTK),		NULL,			NULL,							0, (gchar *)"<Branch>"},
+	{(gchar *)GetString(STR_PREFS_ITEM_START_GTK),		(gchar *)"<control>S",	G_CALLBACK(cb_start),		0, NULL},
 	{(gchar *)GetString(STR_PREFS_ITEM_SAVE_GTK),		NULL,			G_CALLBACK(cb_save),		0, NULL},
 	{(gchar *)GetString(STR_PREFS_ITEM_ZAP_PRAM_GTK),	NULL,			G_CALLBACK(mn_zap_pram),	0, NULL},
-	{(gchar *)GetString(STR_PREFS_ITEM_SEPL_GTK),		NULL,			NULL,							0, "<Separator>"},
-	{(gchar *)GetString(STR_PREFS_ITEM_QUIT_GTK),		"<control>Q",	G_CALLBACK(cb_quit),		0, NULL},
-	{(gchar *)GetString(STR_HELP_MENU_GTK),				NULL,			NULL,							0, "<LastBranch>"},
+	{(gchar *)GetString(STR_PREFS_ITEM_SEPL_GTK),		NULL,			NULL,							0, (gchar *)"<Separator>"},
+	{(gchar *)GetString(STR_PREFS_ITEM_QUIT_GTK),		(gchar *)"<control>Q",	G_CALLBACK(cb_quit),		0, NULL},
+	{(gchar *)GetString(STR_HELP_MENU_GTK),				NULL,			NULL,							0, (gchar *)"<LastBranch>"},
 	{(gchar *)GetString(STR_HELP_ITEM_ABOUT_GTK),		NULL,			G_CALLBACK(mn_about),		0, NULL}
 };
 
@@ -661,7 +661,7 @@ static void cb_create_volume_response (GtkWidget *chooser, int response, GtkEntr
 							(GtkDialogFlags)(GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT),
 							GTK_MESSAGE_WARNING,
 							GTK_BUTTONS_CLOSE,
-							"Enter a valid size", NULL);
+							"Enter a valid size");
 			gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog), "The volume size should be between 1 and 2000.");
 			gtk_window_set_transient_for(GTK_WINDOW(dialog), GTK_WINDOW(chooser));
 			g_signal_connect(dialog, "response", G_CALLBACK(dl_quit), NULL);
@@ -672,7 +672,9 @@ static void cb_create_volume_response (GtkWidget *chooser, int response, GtkEntr
 		if (fd < 0) {
 			fprintf(stderr, "Could not create %s (%s)\n", file, strerror(errno));
 		} else {
-			ftruncate(fd, disk_size * 1024 * 1024);
+			if (ftruncate(fd, disk_size * 1024 * 1024) != 0) {
+				fprintf(stderr, "Error setting the size of %s (%s)\n", file, strerror(errno));
+			}
 			// A created empty volume is always a new disk
 			add_volume_entry_with_type(file, false);
 		}
@@ -1639,7 +1641,7 @@ static GList *add_serial_names(void)
 #else
 			if (false) {
 #endif
-				char *str = new char[64];
+				char *str = new char[5 + 256];
 				sprintf(str, "/dev/%s", de->d_name);
 				glist = g_list_append(glist, str);
 			}

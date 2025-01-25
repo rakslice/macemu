@@ -308,12 +308,14 @@ void lprint _P((const char *, ...));
 
 extern int do_echo;
 
+#if 0
 #if SIZEOF_CHAR_P == 4
 # define insque_32 insque
 # define remque_32 remque
 #else
  extern inline void insque_32(void *, void *);
  extern inline void remque_32(void *);
+#endif
 #endif
 
 #ifndef _WIN32

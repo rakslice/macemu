@@ -75,7 +75,7 @@ static void read_counts (void)
 
     file = fopen ("frequent.68k", "r");
     if (file) {
-	fscanf (file, "Total: %lu\n", &total);
+	assert(fscanf (file, "Total: %lu\n", &total) == 1);
 	while (fscanf (file, "%lx: %lu %s\n", &opcode, &count, name) == 3) {
 	    opcode_next_clev[nr] = 4;
 	    opcode_last_postfix[nr] = -1;

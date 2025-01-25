@@ -357,8 +357,9 @@ void *Sys_open(const char *name, bool read_only)
 			loff_t size = lseek(fd, 0, SEEK_END);
 			uint8 data[256];
 			lseek(fd, 0, SEEK_SET);
-			read(fd, data, 256);
-			FileDiskLayout(size, data, fh->start_byte, fh->file_size);
+			int result = read(fd, data, 256);
+			if (result >= 256)
+				FileDiskLayout(size, data, fh->start_byte, fh->file_size);
 		}
 
 		// Enqueue file handle

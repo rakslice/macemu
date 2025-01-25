@@ -235,7 +235,8 @@ int main(int argc, char **argv)
 	if (nextch != ':')
 	    abort();
 
-	fgets(opcstr, 250, tablef);
+	char * result = fgets(opcstr, 250, tablef);
+	assert(result != NULL);
 	getnextch();
 	{
 	    int j;

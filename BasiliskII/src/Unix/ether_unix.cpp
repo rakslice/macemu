@@ -880,8 +880,10 @@ static int16 ether_do_write(uint32 arg)
 #ifdef HAVE_SLIRP
 	if (net_if_type == NET_IF_SLIRP) {
 		const int slirp_input_fd = slirp_input_fds[1];
-		write(slirp_input_fd, &len, sizeof(len));
-		write(slirp_input_fd, packet, len);
+		int result = write(slirp_input_fd, &len, sizeof(len));
+		assert(result == sizeof(len));
+		result = write(slirp_input_fd, packet, len);
+		assert(result == len);
 		return noErr;
 	} else
 #endif
@@ -962,7 +964,8 @@ int slirp_can_output(void)
 
 void slirp_output(const uint8 *packet, int len)
 {
-	write(slirp_output_fd, packet, len);
+	int result = write(slirp_output_fd, packet, len);
+	assert(result == len);
 }
 
 void *slirp_receive_func(void *arg)
@@ -982,10 +985,12 @@ void *slirp_receive_func(void *arg)
 		tv.tv_usec = 0;
 		if (select(slirp_input_fd + 1, &rfds, NULL, NULL, &tv) > 0) {
 			int len;
-			read(slirp_input_fd, &len, sizeof(len));
+			int len_read = read(slirp_input_fd, &len, sizeof(len));
+			assert(len_read == sizeof(len));
 			uint8 packet[1516];
 			assert(len <= sizeof(packet));
-			read(slirp_input_fd, packet, len);
+			int bytes_read = read(slirp_input_fd, packet, len);
+			assert(bytes_read == len);
 			slirp_input(packet, len);
 		}
 

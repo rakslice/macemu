@@ -556,8 +556,9 @@ void *Sys_open(const char *path_name, bool read_only, bool is_cdrom)
 			loff_t size = GetFileSize(h, NULL);
 			DWORD bytes_read;
 			uint8 data[256];
-			ReadFile(h, data, sizeof(data), &bytes_read, NULL);
-			FileDiskLayout(size, data, fh->start_byte, fh->file_size);
+			int result = ReadFile(h, data, sizeof(data), &bytes_read, NULL);
+			if (result)
+				FileDiskLayout(size, data, fh->start_byte, fh->file_size);
 		}
 	}
 

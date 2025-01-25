@@ -276,7 +276,7 @@ void SysAddFloppyPrefs(void)
 		struct dirent *floppy_dev;
 		while ((floppy_dev = readdir(fd_dir)) != NULL) {
 			if (strstr(floppy_dev->d_name, "u1440") != NULL) {
-				char fd_dev[20];
+				char fd_dev[12 + 256];
 				sprintf(fd_dev, "/dev/floppy/%s", floppy_dev->d_name);
 				PrefsAddString("floppy", fd_dev);
 			}
@@ -361,7 +361,7 @@ void SysAddCDROMPrefs(void)
 			struct dirent *cdrom_dev;
 			while ((cdrom_dev = readdir(cd_dir)) != NULL) {
 				if (strcmp(cdrom_dev->d_name, ".") != 0 && strcmp(cdrom_dev->d_name, "..") != 0) {
-					char cd_dev[20];
+					char cd_dev[12 + 256];
 					sprintf(cd_dev, "/dev/cdroms/%s", cdrom_dev->d_name);
 					PrefsAddString("cdrom", cd_dev);
 				}
@@ -665,8 +665,9 @@ void *Sys_open(const char *name, bool read_only, bool is_cdrom)
 			size = lseek(fd, 0, SEEK_END);
 			uint8 data[256];
 			lseek(fd, 0, SEEK_SET);
-			read(fd, data, 256);
-			FileDiskLayout(size, data, fh->start_byte, fh->file_size);
+			int result = read(fd, data, 256);
+			if (result >= 256)
+				FileDiskLayout(size, data, fh->start_byte, fh->file_size);
 		} else {
 			struct stat st;
 			if (fstat(fd, &st) == 0) {

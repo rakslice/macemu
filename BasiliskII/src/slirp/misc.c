@@ -238,8 +238,8 @@ slirp_openpty(amaster, aslave)
 			} else {
 				line[5] = 't';
 				/* These will fail */
-				(void) chown(line, getuid(), 0);
-				(void) chmod(line, S_IRUSR|S_IWUSR|S_IWGRP);
+				int ignore_result = chown(line, getuid(), 0);
+				ignore_result = chmod(line, S_IRUSR|S_IWUSR|S_IWGRP);
 #ifdef HAVE_REVOKE
 				(void) revoke(line);
 #endif
@@ -389,7 +389,7 @@ fork_exec(so, ex, do_pty)
 			  
 			  sprintf(buff, "Error: execvp of %s failed: %s\n", 
 				  argv[0], strerror(errno));
-			  write(2, buff, strlen(buff)+1);
+			  int ignore_result = write(2, buff, strlen(buff)+1);
 		  }
 		close(0); close(1); close(2); /* XXX */
 		exit(1);
