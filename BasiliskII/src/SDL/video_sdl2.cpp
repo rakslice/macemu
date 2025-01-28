@@ -1141,6 +1141,8 @@ static int present_sdl_video()
 
 	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
 		if (i->renderer) {
+			SDL_SetRenderDrawColor(i->renderer, 0, 0, 0, 0);	// Use black
+			SDL_RenderClear(i->renderer);
 			SDL_RenderCopy(i->renderer, i->texture, NULL, NULL);
 			SDL_RenderPresent(i->renderer);
 		}
