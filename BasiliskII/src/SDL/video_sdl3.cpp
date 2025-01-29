@@ -96,6 +96,14 @@ enum {
 static int display_type = DISPLAY_WINDOW;			// See enum above
 #endif
 
+// Display clone related state
+struct DisplayClone {
+	SDL_Window * window;
+	SDL_Renderer * renderer;
+	SDL_Texture * texture;
+	int display_num;
+};
+
 // Constants
 #if defined(SDL_PLATFORM_MACOS) || defined(WIN32)
 const char KEYCODE_FILE_NAME[] = "keycodes";
@@ -159,6 +167,8 @@ static SDL_Palette *sdl_palette = NULL;				// Color palette to be used as CLUT a
 static bool sdl_palette_changed = false;			// Flag: Palette changed, redraw thread must set new colors
 static bool toggle_fullscreen = false;
 static bool did_add_event_watch = false;
+
+vector <DisplayClone> clones;
 
 static bool mouse_grabbed = false;
 
@@ -667,7 +677,14 @@ static void delete_sdl_video_surfaces()
 		SDL_DestroyTexture(sdl_texture);
 		sdl_texture = NULL;
 	}
-	
+
+	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+		if (i->texture) {
+			SDL_DestroyTexture(sdl_texture);
+			i->texture = NULL;
+		}
+	}
+
 	if (host_surface) {
 		if (host_surface == guest_surface) {
 			guest_surface = NULL;
@@ -694,6 +711,18 @@ static void delete_sdl_video_window()
 		SDL_DestroyWindow(sdl_window);
 		sdl_window = NULL;
 	}
+
+	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+		if (i->renderer) {
+			SDL_DestroyRenderer(i->renderer);
+			i->renderer = NULL;
+		}
+		if (i->window) {
+			SDL_DestroyWindow(i->window);
+			i->window = NULL;
+		}
+	}
+	clones.clear();
 }
 
 static void shutdown_sdl_video()
@@ -716,13 +745,14 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
         delete_sdl_video_surfaces();
     }
     
-	int window_width = width;
-	int window_height = height;
-	Uint32 window_flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
-	const int window_flags_to_monitor = SDL_WINDOW_FULLSCREEN;
-	
-	if (flags & SDL_WINDOW_FULLSCREEN) {
-		window_flags |= SDL_WINDOW_FULLSCREEN;
+	bool want_fullscreen = flags & SDL_WINDOW_FULLSCREEN;
+
+	float m = get_mag_rate();
+
+	int window_width = width * m;
+	int window_height = height * m;
+
+	if (want_fullscreen) {
 		window_width = sdl_display_width();
 		window_height = sdl_display_height();
 	}
@@ -731,36 +761,111 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 		int old_window_width, old_window_height, old_window_flags;
 		SDL_GetWindowSize(sdl_window, &old_window_width, &old_window_height);
 		old_window_flags = SDL_GetWindowFlags(sdl_window);
+		bool old_fullscreen = (old_window_flags & SDL_WINDOW_FULLSCREEN != 0);
+		D(bug("Checking if we can reuse existing window\n"));
+		D(bug("Existing: %dx%d fs %s (flags 0x%x), want: %dx%d fs %s\n",
+			old_window_width, old_window_height, (old_fullscreen? "yes": "no"), old_window_flags,
+			window_width, window_height, (want_fullscreen? "yes": "no")
+			));
+
 		if (old_window_width != window_width ||
 			old_window_height != window_height ||
-			(old_window_flags & window_flags_to_monitor) != (window_flags & window_flags_to_monitor))
+			want_fullscreen != old_fullscreen)
 		{
+			D(bug("Can't reuse old window\n"));
 			delete_sdl_video_window();
+		} else {
+			D(bug("Reusing old window\n"));
 		}
 	}
 	
-#ifdef SDL_PLATFORM_MACOS
-	if (MetalIsAvailable()) window_flags |= SDL_WINDOW_METAL;
-#endif
-	
 	if (!sdl_window) {
-		float m = get_mag_rate();
 #ifdef VIDEO_CHROMAKEY
 		if (display_type == DISPLAY_CHROMAKEY) {
-			window_flags |= SDL_WINDOW_BORDERLESS | SDL_WINDOW_TRANSPARENT;
 			SDL_SetHint("SDL_MOUSE_FOCUS_CLICKTHROUGH", "1");
 		}
 #endif
-		sdl_window = SDL_CreateWindow(
-			"",
-			m * window_width,
-			m * window_height,
-			window_flags);
-		if (!sdl_window) {
-			shutdown_sdl_video();
+
+		int display_num = PrefsFindInt32("display_num");
+		D(bug("display_num %d\n", display_num));
+
+		int x, y;
+		if (display_num < 0) {
+			x = SDL_WINDOWPOS_UNDEFINED;
+			y = SDL_WINDOWPOS_UNDEFINED;
+		} else {
+			// In SDL 3 the displays seem to be numbered from 1
+			x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num + 1);
+			y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num + 1);
+		}
+
+		SDL_PropertiesID sdl_props = SDL_CreateProperties();
+		if(sdl_props == 0) {
+			SDL_Log("Unable to create properties: %s", SDL_GetError());
+			return NULL;
+		}
+
+		if (SDL_SetStringProperty(sdl_props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "") &&
+			SDL_SetNumberProperty(sdl_props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, window_width) &&
+			SDL_SetNumberProperty(sdl_props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, window_height) &&
+			SDL_SetNumberProperty(sdl_props, SDL_PROP_WINDOW_CREATE_X_NUMBER, x) &&
+			SDL_SetNumberProperty(sdl_props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, y) &&
+#ifdef VIDEO_CHROMAKEY
+			SDL_SetBooleanProperty(sdl_props, SDL_PROP_WINDOW_CREATE_BORDERLESS_BOOLEAN, display_type == DISPLAY_CHROMAKEY) &&
+			SDL_SetBooleanProperty(sdl_props, SDL_PROP_WINDOW_CREATE_TRANSPARENT_BOOLEAN, display_type == DISPLAY_CHROMAKEY) &&
+#endif
+			SDL_SetBooleanProperty(sdl_props, SDL_PROP_WINDOW_CREATE_HIGH_PIXEL_DENSITY_BOOLEAN, true) &&
+#ifdef SDL_PLATFORM_MACOS
+			SDL_SetBooleanProperty(sdl_props, SDL_PROP_WINDOW_CREATE_METAL_BOOLEAN, MetalIsAvailable()) &&
+#endif
+			SDL_SetBooleanProperty(sdl_props, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN, flags & SDL_WINDOW_FULLSCREEN != 0)) {
+
+			D(bug("Creating window %fx%f fs %d\n", window_width, window_height, flags & SDL_WINDOW_FULLSCREEN != 0));
+			sdl_window = SDL_CreateWindowWithProperties(sdl_props);
+
+			if (!sdl_window) {
+				shutdown_sdl_video();
+				return NULL;
+			}
+
+			D(bug("Flags 0x%x\n", SDL_GetWindowFlags(sdl_window)));
+		} else {
+			// property setting error
+			SDL_Log("Unable to set properties: %s", SDL_GetError());
+			SDL_DestroyProperties(sdl_props);
 			return NULL;
 		}
 		SDL_SyncWindow(sdl_window); // needed for fullscreen
+
+		if (PrefsFindBool("clone_display")) {
+
+			display_num = PrefsFindInt32("clone_display_num");
+
+			int x, y;
+			if (display_num < 0) {
+				x = SDL_WINDOWPOS_UNDEFINED;
+				y = SDL_WINDOWPOS_UNDEFINED;
+			} else {
+				// In SDL 3 the displays seem to be numbered from 1
+				x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num + 1);
+				y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num + 1);
+			}
+
+			if (SDL_SetNumberProperty(sdl_props, SDL_PROP_WINDOW_CREATE_X_NUMBER, x) &&
+				SDL_SetNumberProperty(sdl_props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, y)) {
+
+				SDL_Window * clone_window = SDL_CreateWindowWithProperties(sdl_props);
+				if (clone_window) {
+					clones.push_back({clone_window, NULL, NULL, display_num});
+					SDL_SyncWindow(clone_window); // needed for fullscreen
+				} else {
+					D(bug("Error creating clone SDL window\n"));
+				}
+			}
+		}
+
+		SDL_DestroyProperties(sdl_props);
+
 		set_window_name();
 	}
 	
@@ -798,6 +903,20 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 			shutdown_sdl_video();
 			return NULL;
 		}
+
+		int clone_num = 0;
+		for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+			SDL_Renderer * clone_renderer = SDL_CreateRenderer(i->window, NULL);
+			if (!clone_renderer) {
+				printf("Error creating renderer for clone %d\n", clone_num);
+				SDL_DestroyWindow(i->window);
+				i->window = NULL;
+			} else {
+				i->renderer = clone_renderer;
+			}
+			clone_num++;
+		}
+
 		sdl_renderer_thread_id = SDL_ThreadID();
 
 		printf("Using SDL_Renderer driver: %s\n", SDL_GetRendererName(sdl_renderer));
@@ -818,6 +937,20 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
         return NULL;
     }
 	SDL_SetTextureBlendMode(sdl_texture, SDL_BLENDMODE_NONE);
+
+	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+		if (i->renderer) {
+#ifdef ENABLE_VOSF
+			i->texture = SDL_CreateTexture(i->renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
+#else
+			i->texture = SDL_CreateTexture(i->renderer, SDL_PIXELFORMAT_BGRA8888, SDL_TEXTUREACCESS_STREAMING, width, height);
+#endif
+			if (i->texture)
+				SDL_SetTextureBlendMode(i->texture, SDL_BLENDMODE_NONE);
+		} else {
+			i->texture = NULL;
+		}
+	}
 
     sdl_update_video_rect.x = 0;
     sdl_update_video_rect.y = 0;
@@ -886,6 +1019,13 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 	}
 	if (PrefsFindBool("scale_nearest"))
 		SDL_SetTextureScaleMode(sdl_texture, SDL_SCALEMODE_NEAREST);
+
+	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+		if (i->renderer) {
+			SDL_SetRenderLogicalPresentation(i->renderer, width, height,
+				PrefsFindBool("scale_integer") ? SDL_LOGICAL_PRESENTATION_INTEGER_SCALE : SDL_LOGICAL_PRESENTATION_LETTERBOX);
+		}
+	}
 
     return guest_surface;
 }
@@ -964,6 +1104,25 @@ static int present_sdl_video()
 		}
 	SDL_UnlockTexture(sdl_texture);
 
+	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+		if (i->texture) {
+			srcPixels = (uint8_t *)host_surface->pixels +
+			sdl_update_video_rect.y * host_surface->pitch +
+			sdl_update_video_rect.x * SDL_GetPixelFormatDetails(host_surface->format)->bytes_per_pixel;
+
+			if (SDL_LockTexture(i->texture, &sdl_update_video_rect, (void **)&dstPixels, &dstPitch) >= 0) {
+
+					for (int y = 0; y < sdl_update_video_rect.h; y++) {
+						memcpy(dstPixels, srcPixels, sdl_update_video_rect.w << 2);
+						srcPixels += host_surface->pitch;
+						dstPixels += dstPitch;
+					}
+					SDL_UnlockTexture(i->texture);
+			}
+		}
+	}
+
+
     // We are done working with pixels in host_surface.  Reset sdl_update_video_rect, then let
     // other threads modify it, as-needed.
     sdl_update_video_rect.x = 0;
@@ -979,7 +1138,16 @@ static int present_sdl_video()
 	
     // Update the display
 	SDL_RenderPresent(sdl_renderer);
-    
+
+	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+		if (i->renderer) {
+			SDL_SetRenderDrawColor(i->renderer, 0, 0, 0, 0);	// Use black
+			SDL_RenderClear(i->renderer);
+			SDL_RenderTexture(i->renderer, i->texture, NULL, NULL);
+			SDL_RenderPresent(i->renderer);
+		}
+	}
+
     // Indicate success to the caller!
     return 0;
 }
@@ -1685,14 +1853,55 @@ static void do_toggle_fullscreen(void)
 #ifndef SDL_PLATFORM_MACOS
 			SDL_SetWindowPosition(sdl_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 #endif
+
+			for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+				if (i->window) {
+					SDL_SetWindowFullscreen(i->window, false);
+					SDL_SetWindowSize(i->window, m * VIDEO_MODE_X, m * VIDEO_MODE_Y);
+#ifndef __MACOSX__
+					if (i->display_num < 0) {
+						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+					} else {
+						// In SDL 3 the displays seem to be numbered from 1
+						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_CENTERED_DISPLAY(i->display_num + 1),
+															SDL_WINDOWPOS_CENTERED_DISPLAY(i->display_num + 1));
+					}
+#endif
+
+				}
+			}
+
 		} else {
 			display_type = DISPLAY_SCREEN;
 			SDL_SetWindowFullscreen(sdl_window, true);
 #ifdef SDL_PLATFORM_MACOS
 			set_menu_bar_visible_osx(false);
 #endif
+
+			for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+				if (i->window) {
+					SDL_SetWindowFullscreen(i->window, true);
+
+					int num_displays;
+					SDL_DisplayID * displays = SDL_GetDisplays(&num_displays);
+
+					if (i->display_num < 0) {
+						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED);
+					} else {
+						// In SDL 3 the displays seem to be numbered from 1
+						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num + 1),
+															SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num + 1));
+					}
+				}
+			}
 		}
 		SDL_SyncWindow(sdl_window);
+
+		for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+			if (i->window) {
+				SDL_SyncWindow(i->window);
+			}
+		}
 	}
 
 	// switch modes
@@ -2219,7 +2428,7 @@ static int event2keycode(SDL_KeyboardEvent const &key, bool key_down)
 	case SDLK_KP_ENTER: return 0x4c;
 	case SDLK_KP_EQUALS: return 0x51;
 	}
-	D(bug("Unhandled SDL keysym: %d\n", key.sym));
+	D(bug("Unhandled SDL keysym: %d\n", key.key));
 	return CODE_INVALID;
 }
 
@@ -2414,7 +2623,7 @@ static void handle_events(void)
 				break;
 
 			// Window "close" widget clicked
-			case SDL_EVENT_QUIT:
+			case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
 				if (SDL_GetModState() & (SDL_KMOD_LALT | SDL_KMOD_RALT)) break;
 				ADBKeyDown(0x7f);	// Power key
 				ADBKeyUp(0x7f);
