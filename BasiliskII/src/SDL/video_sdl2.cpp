@@ -2657,17 +2657,18 @@ static void handle_events(void)
 					case SDL_WINDOWEVENT_RESTORED:
 						force_complete_window_refresh();
 						break;
+
+					// Window "close" widget clicked
+					case SDL_WINDOWEVENT_CLOSE:
+						if (SDL_GetModState() & (KMOD_LALT | KMOD_RALT)) break;
+						ADBKeyDown(0x7f);	// Power key
+						ADBKeyUp(0x7f);
+						break;
 				}
 				break;
 			}
 
-			// Window "close" widget clicked
-			case SDL_QUIT:
-				if (SDL_GetModState() & (KMOD_LALT | KMOD_RALT)) break;
-				ADBKeyDown(0x7f);	// Power key
-				ADBKeyUp(0x7f);
-				break;
-			}
+			} // switch
 		}
 	}
 }
