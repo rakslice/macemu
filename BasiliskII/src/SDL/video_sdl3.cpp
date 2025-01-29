@@ -1334,7 +1334,7 @@ driver_base::~driver_base()
 	restore_mouse_accel();
 
 	delete_sdl_video_surfaces();	// This deletes instances of SDL_Surface and SDL_Texture
-	shutdown_sdl_video();			// This deletes SDL_Window, SDL_Renderer, in addition to
+	//shutdown_sdl_video();			// This deletes SDL_Window, SDL_Renderer, in addition to
 									// instances of SDL_Surface and SDL_Texture.
 
 	// the_buffer shall always be mapped through vm_acquire_framebuffer()
