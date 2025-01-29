@@ -801,10 +801,12 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 			window_width, window_height, (want_fullscreen? "yes": "no")
 			));
 
-		if (old_window_width != window_width ||
-			old_window_height != window_height ||
-			want_fullscreen != old_fullscreen)
+		if ((old_window_width != window_width ||
+			old_window_height != window_height)
+			 && !want_fullscreen)
 		{
+			// If we are in windowed mode and the resolution is changing
+			// we need a window at a new size, or else the scale will change
 			D(bug("Can't reuse old window\n"));
 			delete_sdl_video_window();
 		} else {
