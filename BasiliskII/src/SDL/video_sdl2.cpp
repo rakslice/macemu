@@ -759,9 +759,11 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
     if (guest_surface) {
         delete_sdl_video_surfaces();
     }
-    
-	int window_width = width;
-	int window_height = height;
+
+	float m = get_mag_rate();
+
+	int window_width = width * m;
+	int window_height = height * m;
 	Uint32 window_flags = SDL_WINDOW_ALLOW_HIGHDPI;
 	const int window_flags_to_monitor = SDL_WINDOW_FULLSCREEN;
 	
@@ -808,13 +810,12 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 			y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num);
 		}
 
-		float m = get_mag_rate();
 		sdl_window = SDL_CreateWindow(
 			"",
 			x,
 			y,
-			m * window_width,
-			m * window_height,
+			window_width,
+			window_height,
 			window_flags);
 		if (!sdl_window) {
 			shutdown_sdl_video();
@@ -832,7 +833,7 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 				y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num);
 			}
 
-			SDL_Window * clone_window = SDL_CreateWindow("", x, y, m * window_width, m * window_height, window_flags);
+			SDL_Window * clone_window = SDL_CreateWindow("", x, y, window_width, window_height, window_flags);
 			if (clone_window) {
 				clones.push_back({clone_window, NULL, NULL, display_num});
 			} else {
