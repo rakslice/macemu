@@ -96,6 +96,7 @@ enum {
 static int display_type = DISPLAY_WINDOW;			// See enum above
 #endif
 
+// Display clone related state
 struct DisplayClone {
 	SDL_Window * window;
 	SDL_Renderer * renderer;
@@ -835,7 +836,7 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 			if (clone_window) {
 				clones.push_back({clone_window, NULL, NULL, display_num});
 			} else {
-				D(bug("Error opening clone SDL window\n"));
+				D(bug("Error creating clone SDL window\n"));
 			}
 
 		}
@@ -917,11 +918,14 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 
 	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
 		if (i->renderer) {
+#ifdef ENABLE_VOSF
+			i->texture = SDL_CreateTexture(i->renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
+#else
 			i->texture = SDL_CreateTexture(i->renderer, SDL_PIXELFORMAT_BGRA8888, SDL_TEXTUREACCESS_STREAMING, width, height);
+#endif
 		} else {
 			i->texture = NULL;
 		}
-
 	}
 
     sdl_update_video_rect.x = 0;
@@ -1883,7 +1887,11 @@ static void do_toggle_fullscreen(void)
 					SDL_SetWindowFullscreen(i->window, SDL_WINDOW_FULLSCREEN_DESKTOP);
 					SDL_SetWindowGrab(i->window, SDL_TRUE);
 
-					SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num), SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num));
+					if (i->display_num < 0) {
+						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED);
+					} else {
+						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num), SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num));
+					}
 				}
 			}
 		}
