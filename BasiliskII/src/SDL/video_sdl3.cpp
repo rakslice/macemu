@@ -1360,8 +1360,14 @@ driver_base::~driver_base()
 	restore_mouse_accel();
 
 	delete_sdl_video_surfaces();	// This deletes instances of SDL_Surface and SDL_Texture
-	//shutdown_sdl_video();			// This deletes SDL_Window, SDL_Renderer, in addition to
-									// instances of SDL_Surface and SDL_Texture.
+
+	// shutdown_sdl_video() would delete SDL_Window, SDL_Renderer, in addition to
+	// instances of SDL_Surface and SDL_Texture.
+
+	// Do not shut down the window here, in case we are just changing modes and it can be reused.
+	// - If we are changing modes the init_sdl_video() of the next driver is responsible for
+	// cleaning up the old window if it cannot be reused.
+	// - If we are shutting down, VideoExit() will cleanup the window after the driver.
 
 	// the_buffer shall always be mapped through vm_acquire_framebuffer()
 	if (the_buffer != VM_MAP_FAILED) {
@@ -1848,6 +1854,8 @@ void VideoExit(void)
 	vector<monitor_desc *>::iterator i, end = VideoMonitors.end();
 	for (i = VideoMonitors.begin(); i != end; ++i)
 		dynamic_cast<SDL_monitor_desc *>(*i)->video_close();
+
+	shutdown_sdl_video();
 
 	// Destroy locks
 	if (frame_buffer_lock)
