@@ -474,7 +474,21 @@ static int sdl_depth_of_video_depth(int video_depth)
 static void sdl_display_dimensions(int &width, int &height)
 {
 	SDL_Rect rect = { 0 };
-	SDL_DisplayID displayID = SDL_GetPrimaryDisplay();
+
+	SDL_DisplayID displayID;
+
+	int display_num = PrefsFindInt32("display_num");
+	if (display_num < 0) {
+		displayID = SDL_GetPrimaryDisplay();
+	} else {
+		int display_count;
+		SDL_DisplayID * displays = SDL_GetDisplays(&display_count);
+		if (display_num < display_count) {
+			displayID = displays[display_num];
+		} else {
+			displayID = SDL_GetPrimaryDisplay();
+		}
+	}
 	if (displayID) SDL_GetDisplayBounds(displayID, &rect);
 	width = rect.w;
 	height = rect.h;
