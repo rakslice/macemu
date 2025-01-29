@@ -471,19 +471,19 @@ static int sdl_depth_of_video_depth(int video_depth)
 }
 
 // Get the display num for the given SDL display ID
-// Returns 0-based display index of the display, or -1 if the display was not found.
+// Returns 1-based display index of the display, or 0 if the display was not found.
 static int display_num_for_id(SDL_DisplayID displayID) {
-	if (displayID == 0) return -1;
+	if (displayID == 0) return 0;
 
 	int num_displays;
 	SDL_DisplayID * displays = SDL_GetDisplays(&num_displays);
 	for (int i = 0; i < num_displays; i++) {
 		if (displays[i] == displayID) {
-			return i;
+			return i + 1;
 		}
 	}
 
-	return -1;
+	return 0;
 }
 
 // Get screen dimensions
@@ -494,13 +494,15 @@ static void sdl_display_dimensions(int &width, int &height)
 	SDL_DisplayID displayID;
 
 	int display_num = PrefsFindInt32("display_num");
-	if (display_num < 0) {
+	// For the purposes of this pref, displays start from 1
+
+	if (display_num < 1) {
 		displayID = SDL_GetPrimaryDisplay();
 	} else {
 		int display_count;
 		SDL_DisplayID * displays = SDL_GetDisplays(&display_count);
-		if (display_num < display_count) {
-			displayID = displays[display_num];
+		if (display_num - 1 < display_count) {
+			displayID = displays[display_num - 1];
 		} else {
 			displayID = SDL_GetPrimaryDisplay();
 		}
@@ -823,20 +825,21 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 
 		int display_num = PrefsFindInt32("display_num");
 		D(bug("display_num %d\n", display_num));
+		// For the purposes of this pref, displays start from 1
 
-		if ((display_num < 0) && (old_window_display_id != 0)) {
+		if ((display_num < 1) && (old_window_display_id != 0)) {
 			// prefs display is unspecified but keep the window on the display it's on
 			display_num = display_num_for_id(old_window_display_id);
 		}
 
 		int x, y;
-		if (display_num < 0) {
+		if (display_num < 1) {
 			x = SDL_WINDOWPOS_UNDEFINED;
 			y = SDL_WINDOWPOS_UNDEFINED;
 		} else {
-			// In SDL 3 the displays seem to be numbered from 1
-			x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num + 1);
-			y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num + 1);
+			// In SDL 3 the display indexes used with the special window position macros appear to start from 1
+			x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num);
+			y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num);
 		}
 
 		SDL_PropertiesID sdl_props = SDL_CreateProperties();
@@ -877,26 +880,21 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 		}
 		SDL_SyncWindow(sdl_window); // needed for fullscreen
 
-		if (PrefsFindBool("clone_display")) {
-
-			display_num = PrefsFindInt32("clone_display_num");
+		int clone_display_num = PrefsFindInt32("clone_to");
+		if (clone_display_num >= 1) {
+			// For the purposes of this pref display numbers start from 1
 
 			int x, y;
-			if (display_num < 0) {
-				x = SDL_WINDOWPOS_UNDEFINED;
-				y = SDL_WINDOWPOS_UNDEFINED;
-			} else {
-				// In SDL 3 the displays seem to be numbered from 1
-				x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num + 1);
-				y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num + 1);
-			}
+			// SDL 3, 1-based
+			x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(clone_display_num);
+			y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(clone_display_num);
 
 			if (SDL_SetNumberProperty(sdl_props, SDL_PROP_WINDOW_CREATE_X_NUMBER, x) &&
 				SDL_SetNumberProperty(sdl_props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, y)) {
 
 				SDL_Window * clone_window = SDL_CreateWindowWithProperties(sdl_props);
 				if (clone_window) {
-					clones.push_back({clone_window, NULL, NULL, display_num});
+					clones.push_back({clone_window, NULL, NULL, clone_display_num});
 					SDL_SyncWindow(clone_window); // needed for fullscreen
 				} else {
 					D(bug("Error creating clone SDL window\n"));
@@ -1907,12 +1905,12 @@ static void do_toggle_fullscreen(void)
 					SDL_SetWindowFullscreen(i->window, false);
 					SDL_SetWindowSize(i->window, m * VIDEO_MODE_X, m * VIDEO_MODE_Y);
 #ifndef __MACOSX__
-					if (i->display_num < 0) {
+					if (i->display_num < 1) {
 						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 					} else {
 						// In SDL 3 the displays seem to be numbered from 1
-						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_CENTERED_DISPLAY(i->display_num + 1),
-															SDL_WINDOWPOS_CENTERED_DISPLAY(i->display_num + 1));
+						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_CENTERED_DISPLAY(i->display_num),
+															SDL_WINDOWPOS_CENTERED_DISPLAY(i->display_num));
 					}
 #endif
 
@@ -1930,12 +1928,12 @@ static void do_toggle_fullscreen(void)
 				if (i->window) {
 					SDL_SetWindowFullscreen(i->window, true);
 
-					if (i->display_num < 0) {
+					if (i->display_num < 1) {
 						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED);
 					} else {
 						// In SDL 3 the displays seem to be numbered from 1
-						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num + 1),
-															SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num + 1));
+						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num),
+															SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num));
 					}
 				}
 			}

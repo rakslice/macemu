@@ -799,15 +799,17 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 	if (!sdl_window) {
 		int display_num = PrefsFindInt32("display_num");
 		D(bug("display_num %d\n", display_num));
+		// For the purposes of this pref, displays start from 1
 
 		int x, y;
 
-		if (display_num < 0) {
+		if (display_num < 1) {
 			x = SDL_WINDOWPOS_UNDEFINED;
 			y = SDL_WINDOWPOS_UNDEFINED;
 		} else {
-			x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num);
-			y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num);
+			// In SDL 2 the display indexes used with the special window position macros start from 0
+			x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num - 1);
+			y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num - 1);
 		}
 
 		sdl_window = SDL_CreateWindow(
@@ -822,20 +824,17 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 			return NULL;
 		}
 
-		if (PrefsFindBool("clone_display")) {
+		int clone_display_num = PrefsFindInt32("clone_to");
+		if (clone_display_num >= 1) {
+			// For the purpose of this pref, displays start from 1
 
-			display_num = PrefsFindInt32("clone_display_num");
-			if (display_num < 0) {
-				x = SDL_WINDOWPOS_UNDEFINED;
-				y = SDL_WINDOWPOS_UNDEFINED;
-			} else {
-				x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num);
-				y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num);
-			}
+			// SDL 2, 0-based
+			x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(clone_display_num - 1);
+			y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(clone_display_num - 1);
 
 			SDL_Window * clone_window = SDL_CreateWindow("", x, y, window_width, window_height, window_flags);
 			if (clone_window) {
-				clones.push_back({clone_window, NULL, NULL, display_num});
+				clones.push_back({clone_window, NULL, NULL, clone_display_num});
 			} else {
 				D(bug("Error creating clone SDL window\n"));
 			}
@@ -1868,10 +1867,10 @@ static void do_toggle_fullscreen(void)
 					SDL_SetWindowGrab(i->window, SDL_FALSE);
 
 #ifndef __MACOSX__
-					if (i->display_num < 0) {
+					if (i->display_num < 1) {
 						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 					} else {
-						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_CENTERED_DISPLAY(i->display_num), SDL_WINDOWPOS_CENTERED_DISPLAY(i->display_num));
+						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_CENTERED_DISPLAY(i->display_num - 1), SDL_WINDOWPOS_CENTERED_DISPLAY(i->display_num - 1));
 					}
 #endif
 
@@ -1888,10 +1887,10 @@ static void do_toggle_fullscreen(void)
 					SDL_SetWindowFullscreen(i->window, SDL_WINDOW_FULLSCREEN_DESKTOP);
 					SDL_SetWindowGrab(i->window, SDL_TRUE);
 
-					if (i->display_num < 0) {
+					if (i->display_num < 1) {
 						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED);
 					} else {
-						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num), SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num));
+						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num - 1), SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num - 1));
 					}
 				}
 			}
