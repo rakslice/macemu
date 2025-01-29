@@ -782,9 +782,9 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 		int old_window_width, old_window_height, old_window_flags;
 		SDL_GetWindowSize(sdl_window, &old_window_width, &old_window_height);
 		old_window_flags = SDL_GetWindowFlags(sdl_window);
-		if (old_window_width != window_width ||
-			old_window_height != window_height ||
-			(old_window_flags & window_flags_to_monitor) != (window_flags & window_flags_to_monitor))
+		if ((old_window_width != window_width ||
+			old_window_height != window_height) &&
+			((window_flags & window_flags_to_monitor) == 0))
 		{
 			delete_sdl_video_window();
 		}
