@@ -470,6 +470,22 @@ static int sdl_depth_of_video_depth(int video_depth)
 	return (video_depth <= VIDEO_DEPTH_8BIT) ? 8 : mac_depth_of_video_depth(video_depth);
 }
 
+// Get the display num for the given SDL display ID
+// Returns 0-based display index of the display, or -1 if the display was not found.
+static int display_num_for_id(SDL_DisplayID displayID) {
+	if (displayID == 0) return -1;
+
+	int num_displays;
+	SDL_DisplayID * displays = SDL_GetDisplays(&num_displays);
+	for (int i = 0; i < num_displays; i++) {
+		if (displays[i] == displayID) {
+			return i;
+		}
+	}
+
+	return -1;
+}
+
 // Get screen dimensions
 static void sdl_display_dimensions(int &width, int &height)
 {
@@ -770,8 +786,11 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 		window_width = sdl_display_width();
 		window_height = sdl_display_height();
 	}
+
+	SDL_DisplayID old_window_display_id = 0;
 	
 	if (sdl_window) {
+		old_window_display_id = SDL_GetDisplayForWindow(sdl_window);
 		int old_window_width, old_window_height, old_window_flags;
 		SDL_GetWindowSize(sdl_window, &old_window_width, &old_window_height);
 		old_window_flags = SDL_GetWindowFlags(sdl_window);
@@ -802,6 +821,11 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 
 		int display_num = PrefsFindInt32("display_num");
 		D(bug("display_num %d\n", display_num));
+
+		if ((display_num < 0) && (old_window_display_id != 0)) {
+			// prefs display is unspecified but keep the window on the display it's on
+			display_num = display_num_for_id(old_window_display_id);
+		}
 
 		int x, y;
 		if (display_num < 0) {
@@ -1895,9 +1919,6 @@ static void do_toggle_fullscreen(void)
 			for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
 				if (i->window) {
 					SDL_SetWindowFullscreen(i->window, true);
-
-					int num_displays;
-					SDL_DisplayID * displays = SDL_GetDisplays(&num_displays);
 
 					if (i->display_num < 0) {
 						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED);
