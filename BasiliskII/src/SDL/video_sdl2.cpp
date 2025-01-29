@@ -96,6 +96,14 @@ enum {
 static int display_type = DISPLAY_WINDOW;			// See enum above
 #endif
 
+struct DisplayClone {
+	SDL_Window * window;
+	SDL_Renderer * renderer;
+	SDL_Texture * texture;
+	//SDL_Surface * surface;
+	int display_num;
+};
+
 // Constants
 #if defined(__MACOSX__) || defined(WIN32)
 const char KEYCODE_FILE_NAME[] = "keycodes";
@@ -159,6 +167,8 @@ static SDL_Palette *sdl_palette = NULL;				// Color palette to be used as CLUT a
 static bool sdl_palette_changed = false;			// Flag: Palette changed, redraw thread must set new colors
 static bool toggle_fullscreen = false;
 static bool did_add_event_watch = false;
+
+vector <DisplayClone> clones;
 
 static bool mouse_grabbed = false;
 
@@ -568,6 +578,11 @@ static void set_window_name() {
         s += GetString(STR_WINDOW_TITLE_GRABBED_POST);
 	}
 	SDL_SetWindowTitle(sdl_window, s.c_str());
+	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+		if (i->window) {
+			SDL_SetWindowTitle(i->window, s.c_str());
+		}
+	}
 }
 
 // Migrate preferences items (XXX to be handled in MigratePrefs())
@@ -677,6 +692,13 @@ static void delete_sdl_video_surfaces()
 		SDL_DestroyTexture(sdl_texture);
 		sdl_texture = NULL;
 	}
+
+	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+		if (i->texture) {
+			SDL_DestroyTexture(sdl_texture);
+			i->texture = NULL;
+		}
+	}
 	
 	if (host_surface) {
 		if (host_surface == guest_surface) {
@@ -704,6 +726,18 @@ static void delete_sdl_video_window()
 		SDL_DestroyWindow(sdl_window);
 		sdl_window = NULL;
 	}
+
+	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+		if (i->renderer) {
+			SDL_DestroyRenderer(i->renderer);
+			i->renderer = NULL;
+		}
+		if (i->window) {
+			SDL_DestroyWindow(i->window);
+			i->window = NULL;
+		}
+	}
+	clones.clear();
 }
 
 static void shutdown_sdl_video()
@@ -761,11 +795,24 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 #endif
 	
 	if (!sdl_window) {
+		int display_num = PrefsFindInt32("display_num");
+		D(bug("display_num %d\n", display_num));
+
+		int x, y;
+
+		if (display_num < 0) {
+			x = SDL_WINDOWPOS_UNDEFINED;
+			y = SDL_WINDOWPOS_UNDEFINED;
+		} else {
+			x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num);
+			y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num);
+		}
+
 		float m = get_mag_rate();
 		sdl_window = SDL_CreateWindow(
 			"",
-			SDL_WINDOWPOS_UNDEFINED,
-			SDL_WINDOWPOS_UNDEFINED,
+			x,
+			y,
 			m * window_width,
 			m * window_height,
 			window_flags);
@@ -773,6 +820,27 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 			shutdown_sdl_video();
 			return NULL;
 		}
+
+		if (PrefsFindBool("clone_display")) {
+
+			display_num = PrefsFindInt32("clone_display_num");
+			if (display_num < 0) {
+				x = SDL_WINDOWPOS_UNDEFINED;
+				y = SDL_WINDOWPOS_UNDEFINED;
+			} else {
+				x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num);
+				y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num);
+			}
+
+			SDL_Window * clone_window = SDL_CreateWindow("", x, y, m * window_width, m * window_height, window_flags);
+			if (clone_window) {
+				clones.push_back({clone_window, NULL, NULL, display_num});
+			} else {
+				D(bug("Error opening clone SDL window\n"));
+			}
+
+		}
+
 		set_window_name();
 	}
 	if (flags & SDL_WINDOW_FULLSCREEN) SDL_SetWindowGrab(sdl_window, SDL_TRUE);
@@ -811,6 +879,20 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 			shutdown_sdl_video();
 			return NULL;
 		}
+
+		int clone_num = 0;
+		for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+			SDL_Renderer * clone_renderer = SDL_CreateRenderer(i->window, -1, 0);
+			if (!clone_renderer) {
+				printf("Error creating renderer for clone %d\n", clone_num);
+				SDL_DestroyWindow(i->window);
+				i->window = NULL;
+			} else {
+				i->renderer = clone_renderer;
+			}
+			clone_num++;
+		}
+
 		sdl_renderer_thread_id = SDL_ThreadID();
 
 		SDL_RendererInfo info;
@@ -833,6 +915,16 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
         shutdown_sdl_video();
         return NULL;
     }
+
+	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+		if (i->renderer) {
+			i->texture = SDL_CreateTexture(i->renderer, SDL_PIXELFORMAT_BGRA8888, SDL_TEXTUREACCESS_STREAMING, width, height);
+		} else {
+			i->texture = NULL;
+		}
+
+	}
+
     sdl_update_video_rect.x = 0;
     sdl_update_video_rect.y = 0;
     sdl_update_video_rect.w = 0;
@@ -897,6 +989,41 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
         }
     }
 
+	// for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+	// 	if (i->texture) {
+	// 		Uint32 texture_format;
+	// 		bool fail = false;
+	// 		if (SDL_QueryTexture(sdl_texture, &texture_format, NULL, NULL, NULL) != 0) {
+	// 			printf("ERROR: Unable to get the SDL texture's pixel format: %s\n", SDL_GetError());
+	// 			fail = true;
+	// 		} else {
+	// 			int bpp;
+	// 			Uint32 Rmask, Gmask, Bmask, Amask;
+	// 			if (!SDL_PixelFormatEnumToMasks(texture_format, &bpp, &Rmask, &Gmask, &Bmask, &Amask)) {
+	// 				printf("ERROR: Unable to determine format for host SDL_surface: %s\n", SDL_GetError());
+	// 				shutdown_sdl_video();
+	// 				fail = true;
+	// 			} else {
+	// 				i->surface = SDL_CreateRGBSurface(0, width, height, bpp, Rmask, Gmask, Bmask, Amask);
+	// 				if (!i->surface) {
+	// 					printf("ERROR: Unable to create host SDL_surface: %s\n", SDL_GetError());
+	// 					shutdown_sdl_video();
+	// 					fail = true;
+	// 				}
+	// 			}
+	// 		}
+
+	// 		if (fail) {
+	// 			SDL_DestroyTexture(i->texture);
+	// 			i->texture = NULL;
+	// 			SDL_DestroyRenderer(i->renderer);
+	// 			i->renderer = NULL;
+	// 			SDL_DestroyWindow(i->window);
+	// 			i->window = NULL;
+	// 		}
+	// 	}
+	// }
+
 	if (SDL_RenderSetLogicalSize(sdl_renderer, width, height) != 0) {
 		printf("ERROR: Unable to set SDL rendeer's logical size (to %dx%d): %s\n",
 			   width, height, SDL_GetError());
@@ -905,6 +1032,13 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 	}
 
 	SDL_RenderSetIntegerScale(sdl_renderer, PrefsFindBool("scale_integer") ? SDL_TRUE : SDL_FALSE);
+
+	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+		if (i->renderer) {
+			SDL_RenderSetLogicalSize(i->renderer, width, height);
+			SDL_RenderSetIntegerScale(i->renderer, PrefsFindBool("scale_integer") ? SDL_TRUE : SDL_FALSE);
+		}
+	}
 
     return guest_surface;
 }
@@ -970,6 +1104,25 @@ static int present_sdl_video()
 	}
 	SDL_UnlockTexture(sdl_texture);
 
+	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+		if (i->texture) {
+			srcPixels = (uint8_t *)host_surface->pixels +
+			sdl_update_video_rect.y * host_surface->pitch +
+			sdl_update_video_rect.x * host_surface->format->BytesPerPixel;
+
+			if (SDL_LockTexture(i->texture, &sdl_update_video_rect, (void **)&dstPixels, &dstPitch) >= 0) {
+
+					for (int y = 0; y < sdl_update_video_rect.h; y++) {
+						memcpy(dstPixels, srcPixels, sdl_update_video_rect.w << 2);
+						srcPixels += host_surface->pitch;
+						dstPixels += dstPitch;
+					}
+					SDL_UnlockTexture(i->texture);
+			}
+		}
+	}
+
+
     // We are done working with pixels in host_surface.  Reset sdl_update_video_rect, then let
     // other threads modify it, as-needed.
     sdl_update_video_rect.x = 0;
@@ -985,6 +1138,13 @@ static int present_sdl_video()
 	
     // Update the display
 	SDL_RenderPresent(sdl_renderer);
+
+	for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+		if (i->renderer) {
+			SDL_RenderCopy(i->renderer, i->texture, NULL, NULL);
+			SDL_RenderPresent(i->renderer);
+		}
+	}
     
     // Indicate success to the caller!
     return 0;
@@ -1677,6 +1837,14 @@ static void ApplyGammaRamp() {
 			if (result < 0)
 				fprintf(stderr, "SDL_GetWindowGammaRamp returned %d, SDL error: %s\n", result, SDL_GetError());
 			init_gamma_valid = true;
+
+			for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+				if (i->window) {
+					result = SDL_GetWindowGammaRamp(i->window, init_gamma_red, init_gamma_green, init_gamma_blue);
+					if (result < 0)
+						fprintf(stderr, "SDL_GetWindowGammaRamp returned %d, SDL error: %s\n", result, SDL_GetError());
+				}
+			}
 		}
 		const char *s = PrefsFindString("gammaramp");
 		if (!s) s = "off";
@@ -1686,6 +1854,18 @@ static void ApplyGammaRamp() {
 			result = SDL_SetWindowGammaRamp(sdl_window, init_gamma_red, init_gamma_green, init_gamma_blue);
 		if (result < 0)
 			fprintf(stderr, "SDL_SetWindowGammaRamp returned %d, SDL error: %s\n", result, SDL_GetError());
+
+		for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+			if (i->window) {
+				if (strcmp(s, "off") && (strcmp(s, "fullscreen") || display_type == DISPLAY_SCREEN))
+					result = SDL_SetWindowGammaRamp(i->window, last_gamma_red, last_gamma_green, last_gamma_blue);
+				else
+					result = SDL_SetWindowGammaRamp(i->window, init_gamma_red, init_gamma_green, init_gamma_blue);
+				if (result < 0)
+					fprintf(stderr, "SDL_SetWindowGammaRamp returned %d, SDL error: %s\n", result, SDL_GetError());
+			}
+		}
+
 	}
 }
 
@@ -1710,10 +1890,36 @@ static void do_toggle_fullscreen(void)
 #ifndef __MACOSX__
 			SDL_SetWindowPosition(sdl_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 #endif
+			for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+				if (i->window) {
+					SDL_SetWindowFullscreen(i->window, 0);
+					SDL_SetWindowSize(i->window, m * VIDEO_MODE_X, m * VIDEO_MODE_Y);
+					SDL_SetWindowGrab(i->window, SDL_FALSE);
+
+#ifndef __MACOSX__
+					if (i->display_num < 0) {
+						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+					} else {
+						SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_CENTERED_DISPLAY(i->display_num), SDL_WINDOWPOS_CENTERED_DISPLAY(i->display_num));
+					}
+#endif
+
+				}
+			}
+
 		} else {
 			display_type = DISPLAY_SCREEN;
 			SDL_SetWindowFullscreen(sdl_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
 			SDL_SetWindowGrab(sdl_window, SDL_TRUE);
+
+			for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
+				if (i->window) {
+					SDL_SetWindowFullscreen(i->window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+					SDL_SetWindowGrab(i->window, SDL_TRUE);
+
+					SDL_SetWindowPosition(i->window, SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num), SDL_WINDOWPOS_UNDEFINED_DISPLAY(i->display_num));
+				}
+			}
 		}
 	}
 

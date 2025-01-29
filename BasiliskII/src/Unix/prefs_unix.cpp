@@ -43,6 +43,9 @@ prefs_desc platform_prefs_items[] = {
 	{"idlewait", TYPE_BOOLEAN, false,      "sleep when idle"},
 #ifdef USE_SDL_VIDEO
 	{"sdlrender", TYPE_STRING, false,      "SDL_Renderer driver (\"auto\", \"software\" (may be faster), etc.)"},
+	{"display_num", TYPE_INT32, false, "SDL display number to use"},
+	{"clone_display", TYPE_BOOLEAN, false,		   "show on a second SDL display"},
+	{"clone_display_num", TYPE_INT32, false, "SDL display number to use for the second display"},
 #endif
 	{NULL, TYPE_END, false, NULL} // End of list
 };
@@ -366,4 +369,11 @@ void AddPlatformPrefsDefaults(void)
 	PrefsReplaceString("mixer", "/dev/mixer");
 #endif
 	PrefsAddBool("idlewait", true);
+
+
+#ifdef USE_SDL_VIDEO
+	PrefsAddInt32("display_num", -1);
+	PrefsAddInt32("clone_display_num", -1);
+#endif
+
 }
