@@ -100,7 +100,6 @@ struct DisplayClone {
 	SDL_Window * window;
 	SDL_Renderer * renderer;
 	SDL_Texture * texture;
-	//SDL_Surface * surface;
 	int display_num;
 };
 
@@ -988,41 +987,6 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
             return NULL;
         }
     }
-
-	// for (vector<DisplayClone>::iterator i = clones.begin(); i != clones.end(); i++) {
-	// 	if (i->texture) {
-	// 		Uint32 texture_format;
-	// 		bool fail = false;
-	// 		if (SDL_QueryTexture(sdl_texture, &texture_format, NULL, NULL, NULL) != 0) {
-	// 			printf("ERROR: Unable to get the SDL texture's pixel format: %s\n", SDL_GetError());
-	// 			fail = true;
-	// 		} else {
-	// 			int bpp;
-	// 			Uint32 Rmask, Gmask, Bmask, Amask;
-	// 			if (!SDL_PixelFormatEnumToMasks(texture_format, &bpp, &Rmask, &Gmask, &Bmask, &Amask)) {
-	// 				printf("ERROR: Unable to determine format for host SDL_surface: %s\n", SDL_GetError());
-	// 				shutdown_sdl_video();
-	// 				fail = true;
-	// 			} else {
-	// 				i->surface = SDL_CreateRGBSurface(0, width, height, bpp, Rmask, Gmask, Bmask, Amask);
-	// 				if (!i->surface) {
-	// 					printf("ERROR: Unable to create host SDL_surface: %s\n", SDL_GetError());
-	// 					shutdown_sdl_video();
-	// 					fail = true;
-	// 				}
-	// 			}
-	// 		}
-
-	// 		if (fail) {
-	// 			SDL_DestroyTexture(i->texture);
-	// 			i->texture = NULL;
-	// 			SDL_DestroyRenderer(i->renderer);
-	// 			i->renderer = NULL;
-	// 			SDL_DestroyWindow(i->window);
-	// 			i->window = NULL;
-	// 		}
-	// 	}
-	// }
 
 	if (SDL_RenderSetLogicalSize(sdl_renderer, width, height) != 0) {
 		printf("ERROR: Unable to set SDL rendeer's logical size (to %dx%d): %s\n",
