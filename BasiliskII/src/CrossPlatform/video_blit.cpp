@@ -474,8 +474,8 @@ static void Blit_Expand_8_To_32(uint8 * dest, const uint8 * p, uint32 length)
 
 // Function used to update the hosst frame buffer (DGA), or an XImage buffer (WIN)
 // --> Shall be initialized only through the Screen_blitter_init() function
-typedef void (*Screen_blit_func)(uint8 * dest, const uint8 * source, uint32 length);
-Screen_blit_func Screen_blit = 0;
+//typedef void (*Screen_blit_func)(uint8 * dest, const uint8 * source, uint32 length);
+//Screen_blit_func Screen_blit = 0;
 
 // Structure used to match the adequate framebuffer update function
 struct Screen_blit_func_info {
@@ -522,7 +522,7 @@ static Screen_blit_func_info Screen_blitters[] = {
 // Initialize the framebuffer update function
 // Returns FALSE, if the function was to be reduced to a simple memcpy()
 // --> In that case, VOSF is not necessary
-bool Screen_blitter_init(VisualFormat const & visual_format, bool native_byte_order, int mac_depth)
+bool Screen_blitter_init(VisualFormat const & visual_format, bool native_byte_order, int mac_depth, Screen_blit_func & Screen_blit)
 {
 #if USE_SDL_VIDEO
 	const bool use_sdl_video = true;

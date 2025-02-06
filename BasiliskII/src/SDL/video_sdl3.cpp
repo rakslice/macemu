@@ -93,7 +93,6 @@ enum {
 	DISPLAY_SCREEN,									// fullscreen display
 	DISPLAY_CHROMAKEY
 };
-static int display_type = DISPLAY_WINDOW;			// See enum above
 #endif
 
 // Display clone related state
@@ -119,10 +118,6 @@ static uint32 frame_skip;							// Prefs items
 static int16 mouse_wheel_mode;
 static int16 mouse_wheel_lines;
 static bool mouse_wheel_reverse;
-
-static uint8 *the_buffer = NULL;					// Mac frame buffer (where MacOS draws into)
-static uint8 *the_buffer_copy = NULL;				// Copy of Mac frame buffer (for refreshed modes)
-static uint32 the_buffer_size;						// Size of allocated the_buffer
 
 static bool redraw_thread_active = false;			// Flag: Redraw thread installed
 #ifndef USE_CPU_EMUL_SERVICES
@@ -150,22 +145,76 @@ static bool classic_mode = false;					// Flag: Classic Mac video mode
 static bool use_keycodes = false;					// Flag: Use keycodes rather than keysyms
 static int keycode_table[256];						// X keycode -> Mac keycode translation table
 
+class driver_base;
+
 // SDL variables
-SDL_Window * sdl_window = NULL;				        // Wraps an OS-native window
-static SDL_Surface * host_surface = NULL;			// Surface in host-OS display format
-static SDL_Surface * guest_surface = NULL;			// Surface in guest-OS display format
-static SDL_Renderer * sdl_renderer = NULL;			// Handle to SDL2 renderer
-static SDL_ThreadID sdl_renderer_thread_id = 0;		// Thread ID where the SDL_renderer was created, and SDL_renderer ops should run (for compatibility w/ d3d9)
-static SDL_Texture * sdl_texture = NULL;			// Handle to a GPU texture, with which to draw guest_surface to
-static SDL_Rect sdl_update_video_rect = {0,0,0,0};  // Union of all rects to update, when updating sdl_texture
-static SDL_Mutex * sdl_update_video_mutex = NULL;   // Mutex to protect sdl_update_video_rect
-static int screen_depth;							// Depth of current screen
+class SDLDisplayInstance {
+public:
+	void set_window_name();
+	void delete_sdl_video_window();
+	void delete_sdl_video_surfaces();
+	void shutdown_sdl_video();
+	SDL_Surface * init_sdl_video(int width, int height, int depth, Uint32 flags, int pitch);
+	int present_sdl_video();
+	void update_sdl_video(SDL_Surface *s, int numrects, SDL_Rect *rects);
+	void update_sdl_video(SDL_Surface *s, Sint32 x, Sint32 y, Sint32 w, Sint32 h);
+	void update_mouse_grab();
+	void do_toggle_fullscreen(void);
+	bool is_fullscreen(SDL_Window * window);
+	void interrupt_time();
+	bool has_window_id(SDL_WindowID win_id) const;
+	inline void handle_palette_changes(void);
+	void clear_buffers();
+	void init_buffers(int pitch, int aligned_height, int monitor_desc_num);
+	void release_buffers();
+	void force_complete_window_refresh();
+
 #ifdef SHEEPSHAVER
-static SDL_Cursor *sdl_cursor = NULL;				// Copy of Mac cursor
+	SDL_Cursor *MagCursor(bool hot);
 #endif
-static SDL_Palette *sdl_palette = NULL;				// Color palette to be used as CLUT and gamma table
-static bool sdl_palette_changed = false;			// Flag: Palette changed, redraw thread must set new colors
-static bool toggle_fullscreen = false;
+
+	SDL_Renderer * renderer() const { return sdl_renderer; }
+
+	SDL_Palette *sdl_palette = NULL;				// Color palette to be used as CLUT and gamma table
+	bool sdl_palette_changed = false;			// Flag: Palette changed, redraw thread must set new colors
+
+	SDL_Rect sdl_update_video_rect = {0,0,0,0};  // Union of all rects to update, when updating sdl_texture
+	SDL_Mutex * sdl_update_video_mutex = NULL;   // Mutex to protect sdl_update_video_rect
+
+	void set_driver_base(driver_base * new_drv) { _drv = new_drv; }
+	driver_base * drv() const { return _drv; }
+	void set_toggle_fullscreen() { toggle_fullscreen = true; }
+	uint8 *host_buffer() const { return the_buffer; }
+	uint8 *host_buffer_copy() const { return the_buffer_copy; }
+
+	int get_display_type() const { return display_type; }
+	void set_display_type(int new_display_type) { display_type = new_display_type; }
+
+	uint32 tick_counter = 0;
+
+	Screen_blit_func Screen_blit = 0;
+protected:
+	SDL_Window * sdl_window = NULL;				        // Wraps an OS-native window
+	SDL_Surface * host_surface = NULL;			// Surface in host-OS display format
+	SDL_Surface * guest_surface = NULL;			// Surface in guest-OS display format
+	SDL_Renderer * sdl_renderer = NULL;			// Handle to SDL2 renderer
+	SDL_ThreadID sdl_renderer_thread_id = 0;		// Thread ID where the SDL_renderer was created, and SDL_renderer ops should run (for compatibility w/ d3d9)
+	SDL_Texture * sdl_texture = NULL;			// Handle to a GPU texture, with which to draw guest_surface to
+	//int screen_depth;							// Depth of current screen
+	#ifdef SHEEPSHAVER
+	SDL_Cursor *sdl_cursor = NULL;				// Copy of Mac cursor
+	#endif
+	bool toggle_fullscreen = false;
+	driver_base *_drv = NULL;
+
+
+	uint8 *the_buffer = NULL;					// Mac frame buffer (where MacOS draws into)
+	uint8 *the_buffer_copy = NULL;				// Copy of Mac frame buffer (for refreshed modes)
+	uint32 the_buffer_size;						// Size of allocated the_buffer
+
+	int display_type = DISPLAY_WINDOW;			// See Display Types enum above
+};
+
 static bool did_add_event_watch = false;
 
 vector <DisplayClone> clones;
@@ -199,9 +248,11 @@ static void (*video_refresh)(void);
 
 // Prototypes
 static int redraw_func(void *arg);
-static int present_sdl_video();
 static bool SDLCALL on_sdl_event_generated(void *userdata, SDL_Event *event);
 static bool is_fullscreen(SDL_Window *);
+static SDLDisplayInstance * display_instance_for_windowID(SDL_WindowID win_id);
+static driver_base * first_drv();
+static void toggle_all_fullscreen();
 
 // From sys_unix.cpp
 extern void SysMountFirstFloppy(void);
@@ -396,14 +447,16 @@ static void ErrorAlert(int error)
 }
 #endif
 
-
 /*
  *  monitor_desc subclass for SDL display
  */
 
 class SDL_monitor_desc : public monitor_desc {
 public:
-	SDL_monitor_desc(const vector<VIDEO_MODE> &available_modes, video_depth default_depth, uint32 default_id) : monitor_desc(available_modes, default_depth, default_id) {}
+	SDLDisplayInstance sdl_display;
+
+	SDL_monitor_desc(const vector<VIDEO_MODE> &available_modes, video_depth default_depth, uint32 default_id, int monitor_desc_num) : monitor_desc(available_modes, default_depth, default_id),
+																																	  monitor_desc_num(monitor_desc_num)  { }
 	~SDL_monitor_desc() {}
 
 	virtual void switch_to_current_mode(void);
@@ -412,6 +465,12 @@ public:
 
 	bool video_open(void);
 	void video_close(void);
+	void emergency_stop();
+	int get_display_num_pref();
+	int display_instance_num() const { return monitor_desc_num; }
+protected:
+	driver_base *drv = NULL;	// Pointer to currently used driver object
+	int monitor_desc_num;
 };
 
 
@@ -579,13 +638,13 @@ static void set_mac_frame_buffer(SDL_monitor_desc &monitor, int depth, bool nati
 	MacFrameSize = VIDEO_MODE_ROW_BYTES * VIDEO_MODE_Y;
 	InitFrameBufferMapping();
 #else
-	monitor.set_mac_frame_base(Host2MacAddr(the_buffer));
+	monitor.set_mac_frame_base(Host2MacAddr(monitor.sdl_display.host_buffer())); // the_buffer
 #endif
 	D(bug("monitor.mac_frame_base = %08x\n", monitor.get_mac_frame_base()));
 }
 
 // Set window name and class
-static void set_window_name() {
+void SDLDisplayInstance::set_window_name() {
 	if (!sdl_window) return;
 	const char *title = PrefsFindString("title");
 	std::string s = title ? title : GetString(STR_WINDOW_TITLE);
@@ -661,7 +720,7 @@ public:
 	driver_base(SDL_monitor_desc &m);
 	~driver_base();
 
-	void init(); // One-time init
+	void init(int monitor_desc_num); // One-time init
 	void set_video_mode(int flags, int pitch);
 	void adapt_to_video_mode();
 
@@ -669,7 +728,7 @@ public:
 	void suspend(void) {}
 	void resume(void) {}
 	void toggle_mouse_grab(void);
-	void mouse_moved(int x, int y) { ADBMouseMoved(x, y); }
+	void mouse_moved(int x, int y) { ADBMouseMoved(x, y, monitor.get_slot_id()); }
 
 	void disable_mouse_accel(void);
 	void restore_mouse_accel(void);
@@ -690,8 +749,6 @@ static void update_display_window_vosf(driver_base *drv);
 #endif
 static void update_display_static(driver_base *drv);
 
-static driver_base *drv = NULL;	// Pointer to currently used driver object
-
 #ifdef ENABLE_VOSF
 # include "video_vosf.h"
 #endif
@@ -699,11 +756,15 @@ static driver_base *drv = NULL;	// Pointer to currently used driver object
 driver_base::driver_base(SDL_monitor_desc &m)
 	: monitor(m), mode(m.get_current_mode()), init_ok(false), s(NULL)
 {
+	m.sdl_display.clear_buffers();
+}
+
+void SDLDisplayInstance::clear_buffers() {
 	the_buffer = NULL;
 	the_buffer_copy = NULL;
 }
 
-static void delete_sdl_video_surfaces()
+void SDLDisplayInstance::delete_sdl_video_surfaces()
 {
 	if (sdl_texture) {
 		SDL_DestroyTexture(sdl_texture);
@@ -732,7 +793,7 @@ static void delete_sdl_video_surfaces()
 	}
 }
 
-static void delete_sdl_video_window()
+void SDLDisplayInstance::delete_sdl_video_window()
 {
 	if (sdl_renderer) {
 		SDL_DestroyRenderer(sdl_renderer);
@@ -757,7 +818,7 @@ static void delete_sdl_video_window()
 	clones.clear();
 }
 
-static void shutdown_sdl_video()
+void SDLDisplayInstance::shutdown_sdl_video()
 {
 	delete_sdl_video_surfaces();
 	delete_sdl_video_window();
@@ -771,7 +832,15 @@ static float get_mag_rate()
 	return m < 1 ? 1 : m > 4 ? 4 : m;
 }
 
-static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flags, int pitch)
+int SDL_monitor_desc::get_display_num_pref() {
+	if (monitor_desc_num == 0)
+		return PrefsFindInt32("display_num");
+	else
+		return PrefsFindInt32("add_display");
+
+}
+
+SDL_Surface * SDLDisplayInstance::init_sdl_video(int width, int height, int depth, Uint32 flags, int pitch)
 {
     if (guest_surface) {
         delete_sdl_video_surfaces();
@@ -823,7 +892,7 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 		}
 #endif
 
-		int display_num = PrefsFindInt32("display_num");
+		int display_num = drv()->monitor.get_display_num_pref();
 		D(bug("display_num %d\n", display_num));
 		// For the purposes of this pref, displays start from 1
 

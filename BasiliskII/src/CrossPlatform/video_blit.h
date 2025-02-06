@@ -32,8 +32,9 @@ struct VisualFormat {
 };
 
 // Prototypes
-extern void (*Screen_blit)(uint8 * dest, const uint8 * source, uint32 length);
-extern bool Screen_blitter_init(VisualFormat const & visual_format, bool native_byte_order, int mac_depth);
+//extern void (*Screen_blit)(uint8 * dest, const uint8 * source, uint32 length);
+typedef void (*Screen_blit_func)(uint8 * dest, const uint8 * source, uint32 length);
+extern bool Screen_blitter_init(VisualFormat const & visual_format, bool native_byte_order, int mac_depth, Screen_blit_func & Screen_blit);
 extern uint32 ExpandMap[256];
 
 // Glue for SheepShaver and BasiliskII
