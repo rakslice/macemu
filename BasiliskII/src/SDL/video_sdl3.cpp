@@ -48,6 +48,7 @@
 #include <vector>
 #include <string>
 #include <math.h>
+#include <inttypes.h>
 
 #ifdef SDL_PLATFORM_MACOS
 #include "utils_macosx.h"
@@ -932,7 +933,7 @@ SDL_Surface * SDLDisplayInstance::init_sdl_video(int width, int height, int dept
 #endif
 			SDL_SetBooleanProperty(sdl_props, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN, flags & SDL_WINDOW_FULLSCREEN != 0)) {
 
-			D(bug("Creating window %fx%f fs %d\n", window_width, window_height, flags & SDL_WINDOW_FULLSCREEN != 0));
+			D(bug("Creating window %dx%d fs %d\n", window_width, window_height, (flags & SDL_WINDOW_FULLSCREEN) != 0));
 			sdl_window = SDL_CreateWindowWithProperties(sdl_props);
 
 			if (!sdl_window) {
@@ -940,7 +941,7 @@ SDL_Surface * SDLDisplayInstance::init_sdl_video(int width, int height, int dept
 				return NULL;
 			}
 
-			D(bug("Flags 0x%x\n", SDL_GetWindowFlags(sdl_window)));
+			D(bug("Flags 0x%lx\n", SDL_GetWindowFlags(sdl_window)));
 		} else {
 			// property setting error
 			SDL_Log("Unable to set properties: %s", SDL_GetError());
@@ -3154,7 +3155,7 @@ static int redraw_func(void *arg)
 
 #if DEBUG
 	uint64 end = GetTicks_usec();
-	D(bug("%lld refreshes in %lld usec = %f refreshes/sec\n", ticks, end - start, ticks * 1000000.0 / (end - start)));
+	D(bug("%" PRId64 " refreshes in %" PRId64" usec = %f refreshes/sec\n", ticks, end - start, ticks * 1000000.0 / (end - start)));
 #endif
 	return 0;
 }
