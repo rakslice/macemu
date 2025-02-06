@@ -879,7 +879,7 @@ SDL_Surface * SDLDisplayInstance::init_sdl_video(int width, int height, int dept
 		int old_window_width, old_window_height, old_window_flags;
 		SDL_GetWindowSize(sdl_window, &old_window_width, &old_window_height);
 		old_window_flags = SDL_GetWindowFlags(sdl_window);
-		bool old_fullscreen = (old_window_flags & SDL_WINDOW_FULLSCREEN != 0);
+		bool old_fullscreen = ((old_window_flags & SDL_WINDOW_FULLSCREEN) != 0);
 		D(bug("Checking if we can reuse existing window\n"));
 		D(bug("Existing: %dx%d fs %s (flags 0x%x), want: %dx%d fs %s\n",
 			old_window_width, old_window_height, (old_fullscreen? "yes": "no"), old_window_flags,
@@ -944,7 +944,7 @@ SDL_Surface * SDLDisplayInstance::init_sdl_video(int width, int height, int dept
 #ifdef SDL_PLATFORM_MACOS
 			SDL_SetBooleanProperty(sdl_props, SDL_PROP_WINDOW_CREATE_METAL_BOOLEAN, MetalIsAvailable()) &&
 #endif
-			SDL_SetBooleanProperty(sdl_props, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN, flags & SDL_WINDOW_FULLSCREEN != 0)) {
+			SDL_SetBooleanProperty(sdl_props, SDL_PROP_WINDOW_CREATE_FULLSCREEN_BOOLEAN, (flags & SDL_WINDOW_FULLSCREEN) != 0)) {
 
 			D(bug("Creating window %dx%d fs %d\n", window_width, window_height, (flags & SDL_WINDOW_FULLSCREEN) != 0));
 			sdl_window = SDL_CreateWindowWithProperties(sdl_props);
