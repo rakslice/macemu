@@ -284,15 +284,28 @@ extern void SysMountFirstFloppy(void);
 		SDL_UnlockSurface(SURFACE);				\
 } while (0)
 
+static void * permanent_fb = VM_MAP_FAILED;
+
+#define USE_PERMANENT_FB 1
+#define MAX_SCREENS 2
+static const size_t RESERVED_SIZE = 80 * 1024 * 1024; // for 6K Retina
 
 /*
  *  Framebuffer allocation routines
  */
 
-static void *vm_acquire_framebuffer(uint32 size)
+static void *vm_acquire_framebuffer(uint32 size, int monitor_desc_num)
 {
 #if defined(HAVE_MACH_VM) || defined(HAVE_MMAP_VM) && defined(__aarch64__)
 	return vm_acquire_reserved(size);
+#elif USE_PERMANENT_FB
+	if (monitor_desc_num >= MAX_SCREENS) return VM_MAP_FAILED;
+	if (size > RESERVED_SIZE) return VM_MAP_FAILED;
+	if (permanent_fb == VM_MAP_FAILED) {
+		permanent_fb = vm_acquire(RESERVED_SIZE * MAX_SCREENS, VM_MAP_DEFAULT | VM_MAP_32BIT);
+		if (permanent_fb == VM_MAP_FAILED) return VM_MAP_FAILED;
+	}
+	return (void *)((uintptr)permanent_fb + monitor_desc_num * RESERVED_SIZE);
 #else
 	// always try to reallocate framebuffer at the same address
 	static void *fb = VM_MAP_FAILED;
@@ -312,7 +325,7 @@ static void *vm_acquire_framebuffer(uint32 size)
 
 static inline void vm_release_framebuffer(void *fb, uint32 size)
 {
-#if !(defined(HAVE_MACH_VM) || defined(HAVE_MMAP_VM) && defined(__aarch64__))
+#if !((defined(HAVE_MACH_VM) || defined(HAVE_MMAP_VM) && defined(__aarch64__))) && !USE_PERMANENT_FB
 	vm_release(fb, size);
 #endif
 }
@@ -1353,7 +1366,7 @@ void driver_base::init()
 		// Allocate memory for frame buffer
 		the_buffer_size = (aligned_height + 2) * pitch;
 		the_buffer_copy = (uint8 *)calloc(1, the_buffer_size);
-		the_buffer = (uint8 *)vm_acquire_framebuffer(the_buffer_size);
+		the_buffer = (uint8 *)vm_acquire_framebuffer(the_buffer_size, monitor_desc_num);
 		memset(the_buffer, 0, the_buffer_size);
 		D(bug("the_buffer = %p, the_buffer_copy = %p\n", the_buffer, the_buffer_copy));
 	}
