@@ -354,7 +354,11 @@ void get_gdevice_display_coords(int device_num, int & top, int & left, int & bot
 	// 129 -> -50
 	// 128 -> -49
 
+#ifdef SHEEPSHAVER
+	int targetRefNum = device_num;
+#else
 	int targetRefNum = -device_num + 79;
+#endif
 	D(bug(" (refnum %d)\n", targetRefNum));
 
 	int i = 0;

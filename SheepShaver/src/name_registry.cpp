@@ -27,6 +27,7 @@
 #include "user_strings.h"
 #include "emul_op.h"
 #include "thunks.h"
+#include "prefs.h"
 
 #define DEBUG 0
 #include "debug.h"
@@ -334,6 +335,18 @@ void DoPatchNameRegistry(void)
 			Host2Mac_memcpy(the_video_driver.addr(), video_driver, sizeof(video_driver));
 			RegistryPropertyCreate(video.addr(), "driver,AAPL,MacOS,PowerPC", the_video_driver.addr(), sizeof(video_driver));
 			RegistryPropertyCreateStr(video.addr(), "model", "SheepShaver Video");
+		}
+
+		SheepRegEntryID video2;
+		if (PrefsFindInt32("add_display") != 0) {
+			if (!RegistryCStrEntryCreate(device_tree.addr(), "video2", video2.addr())) {
+				RegistryPropertyCreateStr(video2.addr(), "AAPL,connector", "monitor2");
+				RegistryPropertyCreateStr(video2.addr(), "device_type", "display");
+				SheepArray<sizeof(video_driver)> the_video_driver;
+				Host2Mac_memcpy(the_video_driver.addr(), video_driver, sizeof(video_driver));
+				RegistryPropertyCreate(video2.addr(), "driver,AAPL,MacOS,PowerPC", the_video_driver.addr(), sizeof(video_driver));
+				RegistryPropertyCreateStr(video2.addr(), "model", "SheepShaver Video");
+			}
 		}
 
 		// Create "ethernet"

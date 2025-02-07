@@ -120,14 +120,6 @@ static int16 mouse_wheel_mode;
 static int16 mouse_wheel_lines;
 static bool mouse_wheel_reverse;
 
-static bool redraw_thread_active = false;			// Flag: Redraw thread installed
-#ifndef USE_CPU_EMUL_SERVICES
-static volatile bool redraw_thread_cancel;			// Flag: Cancel Redraw thread
-static SDL_Thread *redraw_thread = NULL;			// Redraw thread
-static volatile bool thread_stop_req = false;
-static volatile bool thread_stop_ack = false;		// Acknowledge for thread_stop_req
-#endif
-
 #ifdef ENABLE_VOSF
 static bool use_vosf = false;						// Flag: VOSF enabled
 #else
@@ -147,10 +139,12 @@ static bool use_keycodes = false;					// Flag: Use keycodes rather than keysyms
 static int keycode_table[256];						// X keycode -> Mac keycode translation table
 
 class driver_base;
+class SDL_monitor_desc;
 
 // SDL variables
 class SDLDisplayInstance {
 public:
+	bool init_locks();
 	void set_window_name();
 	void delete_sdl_video_window();
 	void delete_sdl_video_surfaces();
@@ -168,10 +162,18 @@ public:
 	void clear_buffers();
 	void init_buffers(int pitch, int aligned_height, int monitor_desc_num);
 	void release_buffers();
+	void destroy_locks();
 	void force_complete_window_refresh();
+
+	void VideoRefresh();
+	void do_video_refresh();
+	int instance_redraw_func();
 
 #ifdef SHEEPSHAVER
 	SDL_Cursor *MagCursor(bool hot);
+	void create_cursor();
+	bool is_cursor_in_display();
+	void set_cursor();
 #endif
 
 	SDL_Renderer * renderer() const { return sdl_renderer; }
@@ -191,10 +193,22 @@ public:
 	int get_display_type() const { return display_type; }
 	void set_display_type(int new_display_type) { display_type = new_display_type; }
 
+	void LOCK_FRAME_BUFFER() { SDL_LockMutex(frame_buffer_lock); }
+	void UNLOCK_FRAME_BUFFER() { SDL_UnlockMutex(frame_buffer_lock); }
+
+	bool start_redraw();
+	void stop_redraw();
+
+	void pause_redraw();
+	void resume_redraw();
+
 	uint32 tick_counter = 0;
 
 	Screen_blit_func Screen_blit = 0;
 protected:
+	// Mutex to protect frame buffer
+	SDL_Mutex *frame_buffer_lock = NULL;
+
 	SDL_Window * sdl_window = NULL;				        // Wraps an OS-native window
 	SDL_Surface * host_surface = NULL;			// Surface in host-OS display format
 	SDL_Surface * guest_surface = NULL;			// Surface in guest-OS display format
@@ -202,9 +216,18 @@ protected:
 	SDL_ThreadID sdl_renderer_thread_id = 0;		// Thread ID where the SDL_renderer was created, and SDL_renderer ops should run (for compatibility w/ d3d9)
 	SDL_Texture * sdl_texture = NULL;			// Handle to a GPU texture, with which to draw guest_surface to
 	//int screen_depth;							// Depth of current screen
-	#ifdef SHEEPSHAVER
-	SDL_Cursor *sdl_cursor = NULL;				// Copy of Mac cursor
+
+	bool redraw_thread_active = false;			// Flag: Redraw thread installed
+	#ifndef USE_CPU_EMUL_SERVICES
+	volatile bool redraw_thread_cancel;			// Flag: Cancel Redraw thread
+	SDL_Thread *redraw_thread = NULL;			// Redraw thread
+	volatile bool thread_stop_req = false;
+	volatile bool thread_stop_ack = false;		// Acknowledge for thread_stop_req
 	#endif
+
+#ifdef SHEEPSHAVER
+	SDL_Cursor *sdl_cursor = NULL;				// Copy of Mac cursor
+#endif
 	bool toggle_fullscreen = false;
 	driver_base *_drv = NULL;
 
@@ -232,11 +255,6 @@ static SDL_Mutex *sdl_palette_lock = NULL;
 #define LOCK_PALETTE SDL_LockMutex(sdl_palette_lock)
 #define UNLOCK_PALETTE SDL_UnlockMutex(sdl_palette_lock)
 
-// Mutex to protect frame buffer
-static SDL_Mutex *frame_buffer_lock = NULL;
-#define LOCK_FRAME_BUFFER SDL_LockMutex(frame_buffer_lock)
-#define UNLOCK_FRAME_BUFFER SDL_UnlockMutex(frame_buffer_lock)
-
 // Previously set gamma tables
 static uint16 last_gamma_red[256];
 static uint16 last_gamma_green[256];
@@ -244,7 +262,7 @@ static uint16 last_gamma_blue[256];
 
 // Video refresh function
 static void VideoRefreshInit(void);
-static void (*video_refresh)(void);
+static void (*video_refresh)(SDL_monitor_desc * sdm );
 
 
 // Prototypes
@@ -395,6 +413,7 @@ static LRESULT CALLBACK windows_message_handler(HWND hwnd, UINT msg, WPARAM wPar
  */
 
 #ifdef SHEEPSHAVER
+#if 0
 // Color depth modes type
 typedef int video_depth;
 
@@ -411,28 +430,12 @@ public:
 	monitor_desc(const vector<VIDEO_MODE> &available_modes, video_depth default_depth, uint32 default_id) {}
 	virtual ~monitor_desc() {}
 
-	// Get current Mac frame buffer base address
-	uint32 get_mac_frame_base(void) const {return screen_base;}
-
-	// Set Mac frame buffer base address (called from switch_to_mode())
-	void set_mac_frame_base(uint32 base) {screen_base = base;}
-
-	// Get current video mode
-	const VIDEO_MODE &get_current_mode(void) const {return VModes[cur_mode];}
-
-	// Called by the video driver to switch the video mode on this display
-	// (must call set_mac_frame_base())
-	virtual void switch_to_current_mode(void) = 0;
-
-	// Called by the video driver to set the color palette (in indexed modes)
-	virtual void set_palette(uint8 *pal, int num) = 0;
-	
-	// Called by the video driver to set the gamma table
-	virtual void set_gamma(uint8 *gamma, int num) = 0;
 };
 
 // Vector of pointers to available monitor descriptions, filled by VideoInit()
 static vector<monitor_desc *> VideoMonitors;
+
+#endif
 
 // Find Apple mode matching best specified dimensions
 static int find_apple_resolution(int xsize, int ysize)
@@ -742,7 +745,15 @@ public:
 	void suspend(void) {}
 	void resume(void) {}
 	void toggle_mouse_grab(void);
-	void mouse_moved(int x, int y) { ADBMouseMoved(x, y, monitor.get_slot_id()); }
+	void mouse_moved(int x, int y) {
+		int display_num;
+	#ifdef SHEEPSHAVER
+		display_num = monitor.getRefNum();
+	#else
+		display_num = monitor.get_slot_id();
+	#endif
+		ADBMouseMoved(x, y, display_num);
+	}
 
 	void disable_mouse_accel(void);
 	void restore_mouse_accel(void);
@@ -1306,7 +1317,7 @@ static void MagBits(Uint8 *dst, Uint8 *src, int size) {
 SDL_Cursor *SDLDisplayInstance::MagCursor(bool hot) {
 	int w, h;
 	SDL_GetWindowSize(sdl_window, &w, &h);
-	float mag = std::min((float)w / drv->VIDEO_MODE_X, (float)h / drv->VIDEO_MODE_Y);
+	float mag = std::min((float)w / drv()->VIDEO_MODE_X, (float)h / drv()->VIDEO_MODE_Y);
 	int size = ceilf(16 * mag), n = ((size + 7) >> 3) * size;
 	Uint8 *data = (Uint8 *)SDL_calloc(n, 2);
 	Uint8 *mask = (Uint8 *)SDL_calloc(n, 2);
@@ -1390,6 +1401,15 @@ void driver_base::init(int monitor_desc_num)
 	if (PrefsFindBool("init_grab") && !PrefsFindBool("hardcursor")) grab_mouse();
 }
 
+#ifdef SHEEPSHAVER
+void SDLDisplayInstance::create_cursor() {
+		// Create cursor
+		if ((sdl_cursor = MagCursor(false)) != NULL) {
+			SDL_SetCursor(sdl_cursor);
+		}
+}
+#endif
+
 void driver_base::adapt_to_video_mode() {
 	ADBSetRelMouseMode(mouse_grabbed);
 
@@ -1413,14 +1433,10 @@ void driver_base::adapt_to_video_mode() {
 #ifdef SHEEPSHAVER
 	hardware_cursor = video_can_change_cursor();
 	if (hardware_cursor) {
-		// Create cursor
-		if ((sdl_cursor = MagCursor(false)) != NULL) {
-			SDL_SetCursor(sdl_cursor);
-		}
+		monitor.sdl_display.create_cursor();
 	}
 	// Tell the video driver there's a change in cursor type
-	if (private_data)
-		private_data->cursorHardware = hardware_cursor;
+	monitor.setHardwareCursor(hardware_cursor);
 #endif
 	SDL_LockMutex(monitor.sdl_display.sdl_update_video_mutex);
 	monitor.sdl_display.sdl_update_video_rect.x = 0;
@@ -1660,7 +1676,7 @@ bool SDL_monitor_desc::video_open(void)
 		return false;
 	}
 
-	// FIXME Figure out better logic for this than just always doing it whenever the first monitor is changing
+	// FIXME Is this right for this Windows message handler
 	if (monitor_desc_num == 0) {
 
 #ifdef WIN32
@@ -1669,28 +1685,37 @@ bool SDL_monitor_desc::video_open(void)
 		sdl_window_proc = (WNDPROC)GetWindowLongPtr(the_window, GWLP_WNDPROC);
 		SetWindowLongPtr(the_window, GWLP_WNDPROC, (LONG_PTR)windows_message_handler);
 #endif
-
-		// Initialize VideoRefresh function
-		VideoRefreshInit();
-
-		// Lock down frame buffer
-		LOCK_FRAME_BUFFER;
-
-		// Start redraw/input thread
-#ifndef USE_CPU_EMUL_SERVICES
-		redraw_thread_cancel = false;
-		redraw_thread_active = ((redraw_thread = SDL_CreateThread(redraw_func, "Redraw Thread", NULL)) != NULL);
-		if (!redraw_thread_active) {
-			printf("FATAL: cannot create redraw thread\n");
-			return false;
-		}
-#else
-		redraw_thread_active = true;
-#endif
-
 	}
+
+	// Initialize VideoRefresh function
+	VideoRefreshInit();
+
+	// Lock down frame buffer
+	sdl_display.LOCK_FRAME_BUFFER();
+
+	if (!sdl_display.start_redraw()) {
+		printf("FATAL: cannot create redraw thread\n");
+		return false;
+	}
+
 	return true;
 }
+
+bool SDLDisplayInstance::start_redraw()
+{
+	// Start redraw/input thread
+#ifndef USE_CPU_EMUL_SERVICES
+	redraw_thread_cancel = false;
+	redraw_thread_active = ((redraw_thread = SDL_CreateThread(redraw_func, "Redraw Thread", this)) != NULL);
+	if (!redraw_thread_active) {
+		return false;
+	}
+#else
+	redraw_thread_active = true;
+#endif
+	return true;
+}
+
 
 #ifdef SHEEPSHAVER
 bool VideoInit(void)
@@ -1712,8 +1737,6 @@ bool VideoInit(bool classic)
 	if ((sdl_events_lock = SDL_CreateMutex()) == NULL)
 		return false;
 	if ((sdl_palette_lock = SDL_CreateMutex()) == NULL)
-		return false;
-	if ((frame_buffer_lock = SDL_CreateMutex()) == NULL)
 		return false;
 
 	// Init keycode translation
@@ -1860,10 +1883,6 @@ bool VideoInit(bool classic)
 		const VIDEO_MODE & mode = (*i);
 		if (VIDEO_MODE_X == default_width && VIDEO_MODE_Y == default_height && VIDEO_MODE_DEPTH == default_depth) {
 			default_id = VIDEO_MODE_RESOLUTION;
-#ifdef SHEEPSHAVER
-			std::vector<VIDEO_MODE>::const_iterator begin = VideoModes.begin();
-			cur_mode = distance(begin, i);
-#endif
 			break;
 		}
 	}
@@ -1871,9 +1890,6 @@ bool VideoInit(bool classic)
 		const VIDEO_MODE & mode = VideoModes[0];
 		default_depth = VIDEO_MODE_DEPTH;
 		default_id = VIDEO_MODE_RESOLUTION;
-#ifdef SHEEPSHAVER
-		cur_mode = 0;
-#endif
 	}
 
 #ifdef SHEEPSHAVER
@@ -1906,6 +1922,7 @@ bool VideoInit(bool classic)
 
 	// Create SDL_monitor_desc for this (the only) display
 	SDL_monitor_desc *monitor = new SDL_monitor_desc(VideoModes, (video_depth)color_depth, default_id, 0);
+	if (!monitor->sdl_display.init_locks()) return false;
 	monitor->sdl_display.set_display_type(display_type);
 	VideoMonitors.push_back(monitor);
 
@@ -1916,18 +1933,32 @@ bool VideoInit(bool classic)
 		int second_display_num = PrefsFindInt32("add_display");
 		if (second_display_num >= 1) {
 			monitor = new SDL_monitor_desc(VideoModes, (video_depth)color_depth, default_id, 1);
-			monitor->sdl_display.set_display_type(display_type);
-			VideoMonitors.push_back(monitor);
+			if (monitor) {
+				monitor->sdl_display.set_display_type(display_type);
+				ret = monitor->sdl_display.init_locks();
+				if (ret) {
+					VideoMonitors.push_back(monitor);
 
-			ret = monitor->video_open();
+					ret = monitor->video_open();
+				}
+			} else {
+				ret = false;
+			}
 			if (!ret) {
 				monitor = (SDL_monitor_desc *)*(VideoMonitors.begin());
 				monitor->video_close();
+				monitor->sdl_display.destroy_locks();
 			}
 		}
 	}
 
 	return ret;
+}
+
+bool SDLDisplayInstance::init_locks() {
+	if ((frame_buffer_lock = SDL_CreateMutex()) == NULL)
+		return false;
+	return true;
 }
 
 
@@ -1947,27 +1978,38 @@ void SDL_monitor_desc::video_close(void)
 		HWND the_window = GetMainWindowHandle();
 		SetWindowLongPtr(the_window, GWLP_WNDPROC, (LONG_PTR)sdl_window_proc);
 #endif
-
-		// Stop redraw thread
-#ifndef USE_CPU_EMUL_SERVICES
-		if (redraw_thread_active) {
-			redraw_thread_cancel = true;
-			SDL_WaitThread(redraw_thread, NULL);
-		}
-#endif
-		redraw_thread_active = false;
-
-		// Unlock frame buffer
-		UNLOCK_FRAME_BUFFER;
-		D(bug(" frame buffer unlocked\n"));
-
 	}
+
+	sdl_display.stop_redraw();
+
+	// Unlock frame buffer
+	sdl_display.UNLOCK_FRAME_BUFFER();
+	D(bug(" frame buffer unlocked\n"));
 
 	// Close display
 	D(bug("video_close(%d) deleting drv\n", monitor_desc_num));
 	delete drv;
 	drv = NULL;
 	sdl_display.set_driver_base(NULL);
+}
+
+void SDLDisplayInstance::stop_redraw()
+{
+	// Stop redraw thread
+#ifndef USE_CPU_EMUL_SERVICES
+	if (redraw_thread_active) {
+		redraw_thread_cancel = true;
+		SDL_WaitThread(redraw_thread, NULL);
+	}
+#endif
+	redraw_thread_active = false;
+}
+
+void SDLDisplayInstance::destroy_locks()
+{
+	if (frame_buffer_lock)
+		SDL_DestroyMutex(frame_buffer_lock);
+	frame_buffer_lock = NULL;
 }
 
 void VideoExit(void)
@@ -1978,11 +2020,10 @@ void VideoExit(void)
 		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
 		sdm->video_close();
 		sdm->sdl_display.shutdown_sdl_video();
+		sdm->sdl_display.destroy_locks();
 	}
 
 	// Destroy locks
-	if (frame_buffer_lock)
-		SDL_DestroyMutex(frame_buffer_lock);
 	if (sdl_palette_lock)
 		SDL_DestroyMutex(sdl_palette_lock);
 	if (sdl_events_lock)
@@ -2135,16 +2176,25 @@ void VideoVBL(void)
 		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
 		if (sdm->sdl_display.drv()->init_ok)
 			sdm->sdl_display.interrupt_time();
-	}	
+	}
 
 	// Temporarily give up frame buffer lock (this is the point where
 	// we are suspended when the user presses Ctrl-Tab)
-	UNLOCK_FRAME_BUFFER;
-	LOCK_FRAME_BUFFER;
+	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
+		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		if (sdm->sdl_display.drv()->init_ok) {
+			sdm->sdl_display.UNLOCK_FRAME_BUFFER();
+			sdm->sdl_display.LOCK_FRAME_BUFFER();
+		}
+	}
 
 	// Execute video VBL
-	if (private_data != NULL && private_data->interruptsEnabled)
-		VSLDoInterruptService(private_data->vslServiceID);
+	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
+		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		if (sdm->sdl_display.drv()->init_ok)
+			if (sdm->interruptsEnabled())
+				VSLDoInterruptService(sdm->vslServiceID());
+	}
 }
 #else
 void VideoInterrupt(void)
@@ -2161,18 +2211,24 @@ void VideoInterrupt(void)
 		make_window_transparent(sdl_window);
 	else
 #endif
-	
+
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
 		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
-		if (sdm->sdl_display.drv()->init_ok)
+		if (sdm && sdm->sdl_display.drv() && sdm->sdl_display.drv()->init_ok)
 			sdm->sdl_display.interrupt_time();
 	}
 
 	// Temporarily give up frame buffer lock (this is the point where
 	// we are suspended when the user presses Ctrl-Tab)
-	UNLOCK_FRAME_BUFFER;
-	LOCK_FRAME_BUFFER;
+	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
+		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		if (sdm && sdm->sdl_display.drv() && sdm->sdl_display.drv()->init_ok) {
+			sdm->sdl_display.UNLOCK_FRAME_BUFFER();
+			sdm->sdl_display.LOCK_FRAME_BUFFER();
+		}
+	}
 }
+#endif
 
 void SDLDisplayInstance::interrupt_time() {
 #ifdef SHEEPSHAVER
@@ -2187,7 +2243,6 @@ void SDLDisplayInstance::interrupt_time() {
 
 	present_sdl_video();
 }
-#endif
 
 
 /*
@@ -2311,13 +2366,25 @@ void SDL_monitor_desc::set_gamma(uint8 *gamma, int num_in)
 }
 
 
+void SDLDisplayInstance::pause_redraw()
+{
+	thread_stop_ack = false;
+	thread_stop_req = true;
+	while (!thread_stop_ack) ;
+}
+
+void SDLDisplayInstance::resume_redraw()
+{
+	thread_stop_req = false;
+}
+
 
 /*
  *  Switch video mode
  */
 
 #ifdef SHEEPSHAVER
-int16 video_mode_change(VidLocals *csSave, uint32 ParamPtr)
+int16 video_mode_change(monitor_desc * monitor, VidLocals *csSave, uint32 ParamPtr)
 {
 	/* return if no mode change */
 	if ((csSave->saveData == ReadMacInt32(ParamPtr + csData)) &&
@@ -2333,21 +2400,20 @@ int16 video_mode_change(VidLocals *csSave, uint32 ParamPtr)
 
 			// Disable interrupts and pause redraw thread
 			DisableInterrupt();
-			thread_stop_ack = false;
-			thread_stop_req = true;
-			while (!thread_stop_ack) ;
+			SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(monitor);
+			sdm->sdl_display.pause_redraw();
 
-			cur_mode = i;
-			monitor_desc *monitor = VideoMonitors[0];
+			monitor->set_mode(i);
 			monitor->switch_to_current_mode();
 
-			WriteMacInt32(ParamPtr + csBaseAddr, screen_base);
-			csSave->saveBaseAddr=screen_base;
-			csSave->saveData=VModes[cur_mode].viAppleID;/* First mode ... */
-			csSave->saveMode=VModes[cur_mode].viAppleMode;
+			WriteMacInt32(ParamPtr + csBaseAddr, monitor->get_screen_base());
+			csSave->saveBaseAddr=monitor->get_screen_base();
+			const VideoInfo & mode = monitor->get_current_mode();
+			csSave->saveData=mode.viAppleID;/* First mode ... */
+			csSave->saveMode=mode.viAppleMode;
 
 			// Enable interrupts and resume redraw thread
-			thread_stop_req = false;
+			sdm->sdl_display.resume_redraw();
 			EnableInterrupt();
 			return noErr;
 		}
@@ -2357,7 +2423,7 @@ int16 video_mode_change(VidLocals *csSave, uint32 ParamPtr)
 #endif
 
 #ifdef SHEEPSHAVER
-static bool is_cursor_in_mac_screen()
+bool SDLDisplayInstance::is_cursor_in_display()
 {
 	int windowX, windowY;
 	float cursorX, cursorY;
@@ -2378,7 +2444,7 @@ static bool is_cursor_in_mac_screen()
 		deltaX = (int)cursorX - windowX;
 		deltaY = (int)cursorY - windowY;
 		D(bug("cursor relative {%d,%d}\n", deltaX, deltaY));
-		const VIDEO_MODE &mode = drv->mode;
+		const VIDEO_MODE &mode = drv()->mode;
 		float m = get_mag_rate();
 		out = deltaX >= 0 && deltaX < VIDEO_MODE_X * m &&
 				deltaY >= 0 && deltaY < VIDEO_MODE_Y * m;
@@ -2424,12 +2490,21 @@ bool video_can_change_cursor(void)
 #ifdef SHEEPSHAVER
 void video_set_cursor(void)
 {
+	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
+		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		if (sdm)
+			sdm->sdl_display.set_cursor();
+	}
+}
+
+void SDLDisplayInstance::set_cursor()
+{
 	// Set new cursor image if it was changed
 	if (sdl_cursor) {
 		SDL_DestroyCursor(sdl_cursor);
 		sdl_cursor = MagCursor(true);
 		if (sdl_cursor) {
-			private_data == NULL || private_data->cursorVisible ? SDL_ShowCursor() : SDL_HideCursor();
+			if (drv() && drv()->init_ok) { drv()->monitor.cursorVisible() ? SDL_ShowCursor() : SDL_HideCursor(); }
 			SDL_SetCursor(sdl_cursor);
 
 			// XXX Windows apparently needs an extra mouse event to
@@ -2444,7 +2519,7 @@ void video_set_cursor(void)
 #endif
 			if (move) {
 				if (SDL_CursorVisible()) {
-					bool cursor_in_window = is_cursor_in_mac_screen();
+					bool cursor_in_window = is_cursor_in_display();
 
 					if (cursor_in_window) {
 						float x, y;
@@ -2764,13 +2839,13 @@ static void handle_events(void)
 						set_mouse_ignore(sdl_window, *(uint32 *)p == VIDEO_CHROMAKEY);
 					}
 #endif
-					D(bug("move: %d, %f,%f\n", event.motion.windowID, event.motion.x, event.motion.y));
+					//D(bug("move: %d, %f,%f\n", event.motion.windowID, event.motion.x, event.motion.y));
 
 					static bool prev_clipped = false;
 
 					// clip events to the actual window
-					if (event.motion.x >= 0 && event.motion.x < sdi->drv()->mode.x &&
-						event.motion.y >= 0 && event.motion.y < sdi->drv()->mode.y) {
+					if (event.motion.x >= 0 && event.motion.x < sdi->drv()->VIDEO_MODE_X &&
+						event.motion.y >= 0 && event.motion.y < sdi->drv()->VIDEO_MODE_Y) {
 
 							sdi->drv()->mouse_moved(event.motion.x, event.motion.y);
 							if (prev_clipped) {
@@ -3056,6 +3131,8 @@ static void update_display_static_bbox(driver_base *drv)
 	SDL_Rect *boxes = (SDL_Rect *)alloca(sizeof(SDL_Rect) * n_x_boxes * n_y_boxes);
 	uint32 nr_boxes = 0;
 
+	assert(drv->init_ok);
+
 	uint8 *the_buffer = drv->monitor.sdl_display.host_buffer();
 	uint8 *the_buffer_copy = drv->monitor.sdl_display.host_buffer_copy();
 	Screen_blit_func Screen_blit = drv->monitor.sdl_display.Screen_blit;
@@ -3162,13 +3239,13 @@ inline void SDLDisplayInstance::handle_palette_changes(void)
 	UNLOCK_PALETTE;
 }
 
-static void video_refresh_window_static(void);
+static void video_refresh_window_static(SDL_monitor_desc * desc);
 
-static void video_refresh_dga(void)
+static void video_refresh_dga(SDL_monitor_desc * desc)
 {
 	// Quit DGA mode if requested
 	possibly_quit_dga_mode();
-	video_refresh_window_static();
+	video_refresh_window_static(desc);
 }
 
 #ifdef ENABLE_VOSF
@@ -3209,13 +3286,12 @@ static void video_refresh_window_vosf(void)
 }
 #endif // def ENABLE_VOSF
 
-static void video_refresh_window_static(void)
+static void video_refresh_window_static(SDL_monitor_desc * sdm)
 {
 	// Ungrab mouse if requested
 	possibly_ungrab_mouse();
 
-	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
-		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+	if (sdm) {
 		driver_base * drv = sdm->sdl_display.drv();
 
 		if (drv && drv->init_ok) {
@@ -3259,23 +3335,30 @@ static void VideoRefreshInit(void)
 	}
 }
 
-static inline void do_video_refresh(void)
+inline void SDLDisplayInstance::do_video_refresh(void)
 {
 	// Handle SDL events
 	handle_events();
 
 	// Update display
-	video_refresh();
+	video_refresh(&drv()->monitor);
 
-	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
-		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
-		// Set new palette if it was changed
-		sdm->sdl_display.handle_palette_changes();
-	}
+	// Set new palette if it was changed
+	handle_palette_changes();
 }
 
 // This function is called on non-threaded platforms from a timer interrupt
 void VideoRefresh(void)
+{
+	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
+		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		if (sdm && sdm->sdl_display.drv() && sdm->sdl_display.drv()->init_ok)
+			sdm->sdl_display.VideoRefresh();
+	}
+
+}
+
+void SDLDisplayInstance::VideoRefresh(void)
 {
 	// We need to check redraw_thread_active to inhibit refreshed during
 	// mode changes on non-threaded platforms
@@ -3291,6 +3374,12 @@ const int VIDEO_REFRESH_DELAY = 1000000 / VIDEO_REFRESH_HZ;
 
 #ifndef USE_CPU_EMUL_SERVICES
 static int redraw_func(void *arg)
+{
+	SDLDisplayInstance * sdi = (SDLDisplayInstance *)arg;
+	return sdi->instance_redraw_func();
+}
+
+int SDLDisplayInstance::instance_redraw_func()
 {
 	uint64 start = GetTicks_usec();
 	int64 ticks = 0;

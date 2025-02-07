@@ -21,6 +21,13 @@
 #ifndef VIDEO_H
 #define VIDEO_H
 
+#include <vector>
+
+#ifndef NO_STD_NAMESPACE
+using std::vector;
+#endif
+
+
 extern bool VideoActivated(void);
 extern bool VideoSnapshot(int xsize, int ysize, uint8 *p);
 
@@ -50,6 +57,12 @@ enum {	// viAppleMode
 inline bool IsDirectMode(int mode)
 {
 	return mode == APPLE_16_BIT || mode == APPLE_32_BIT;
+}
+
+// 1, 2, 4 and 8 bit depths use a color palette
+static inline bool IsDirectMode(VideoInfo const & mode)
+{
+	return IsDirectMode(mode.viAppleMode);
 }
 
 // Return the depth code that corresponds to the specified bits-per-pixel value
@@ -103,8 +116,6 @@ enum {	// Display type
 };
 
 extern bool video_activated;		// Flag: video display activated, mouse and keyboard data valid
-extern uint32 screen_base;			// Frame buffer base address
-extern int cur_mode;					// Number of current video mode (index in VModes array)
 extern int display_type;			// Current display type (see above)
 extern rgb_color mac_pal[256];
 extern rgb_color mac_gamma[256];
@@ -133,7 +144,85 @@ struct VidLocals{
 	uint32	regEntryID;			// Mac address of the service owner
 };
 
-extern VidLocals *private_data;	// Pointer to driver local variables (there is only one display, so this is ok)
+//extern VidLocals *private_data;	// Pointer to driver local variables (there is only one display, so this is ok)
+
+
+// Color depth modes type
+typedef int video_depth;
+
+class monitor_desc {
+public:
+
+	monitor_desc(const vector<VideoInfo> &available_modes, video_depth default_depth, uint32 default_id);
+	virtual ~monitor_desc() {}
+	int16 getRefNum() const { return refNum; }
+	void clear_data();
+	bool init_data(uint32 commandContents);
+	int16 video_open(uint32 pb);
+	int16 video_close(uint32 pb);
+	int16 video_status(uint32 pb);
+	int16 video_control(uint32 pb);
+	bool VideoSnapshot(int xsize, int ysize, uint8 *p);
+	void setRefNum(int16 newRefNum) { refNum = newRefNum; }
+
+	void setHardwareCursor(bool newVal) { if (csSave != NULL) { csSave->cursorHardware = newVal; } }
+
+	void set_mode(int new_mode_index) { cur_mode = new_mode_index; }
+
+	uint32 get_screen_base() { return screen_base; }
+
+	bool interruptsEnabled() {
+		if (csSave != NULL)
+			return csSave->interruptsEnabled;
+		else
+			return false;
+	}
+
+	uint32 vslServiceID() {
+		if (csSave != NULL)
+			return csSave->vslServiceID;
+		else
+			return 0;
+	}
+
+	bool cursorVisible() {
+		if (csSave == NULL)
+			return false;
+		else
+			return csSave->cursorVisible;
+	}
+
+	// Get current Mac frame buffer base address
+	uint32 get_mac_frame_base(void) const {return screen_base;}
+
+	// Set Mac frame buffer base address (called from switch_to_mode())
+	void set_mac_frame_base(uint32 base) {screen_base = base;}
+
+	// Get current video mode
+	const VideoInfo &get_current_mode(void) const {return VModes[cur_mode];}
+
+	// Called by the video driver to switch the video mode on this display
+	// (must call set_mac_frame_base())
+	virtual void switch_to_current_mode(void) = 0;
+
+	// Called by the video driver to set the color palette (in indexed modes)
+	virtual void set_palette(uint8 *pal, int num) = 0;
+	
+	// Called by the video driver to set the gamma table
+	virtual void set_gamma(uint8 *gamma, int num) = 0;
+
+protected:
+	vector<VideoInfo> modes;                         // List of supported video modes
+	int16 refNum;		// Driver reference number
+	VidLocals *csSave;	// Pointer to driver local variables
+
+	uint32 screen_base = 0;				// Frame buffer base address
+	int cur_mode;						// Number of current video mode (index in VModes array)
+	int display_type = DIS_INVALID;		// Current display type
+};
+
+// Vector of pointers to available monitor descriptions, filled by VideoInit()
+extern vector<monitor_desc *> VideoMonitors;
 
 extern bool VideoInit(void);
 extern void VideoExit(void);
@@ -145,7 +234,7 @@ extern void video_set_palette(void);
 extern void video_set_gamma(int n_colors);
 extern void video_set_cursor(void);
 extern bool video_can_change_cursor(void);
-extern int16 video_mode_change(VidLocals *csSave, uint32 ParamPtr);
+extern int16 video_mode_change(monitor_desc * monitor, VidLocals *csSave, uint32 ParamPtr);
 extern void video_set_dirty_area(int x, int y, int w, int h);
 
 extern int16 VSLDoInterruptService(uint32 arg1);

@@ -42,9 +42,6 @@
 
 // Global variables
 bool video_activated = false;		// Flag: video display activated, mouse and keyboard data valid
-uint32 screen_base = 0;				// Frame buffer base address
-int cur_mode;						// Number of current video mode (index in VModes array)
-int display_type = DIS_INVALID;		// Current display type
 rgb_color mac_pal[256];
 rgb_color mac_gamma[256];
 uint8 remap_mac_be[256];
@@ -65,10 +62,38 @@ struct VideoInfo VModes[64];
  *  Driver local variables
  */
 
-VidLocals *private_data = NULL;	// Pointer to driver local variables (there is only one display, so this is ok)
-
 static long save_conf_id = APPLE_W_640x480;
 static long save_conf_mode = APPLE_8_BIT;
+
+// Vector of pointers to available monitor descriptions, filled by VideoInit()
+vector<monitor_desc *> VideoMonitors;
+
+/*
+ *  Find pointer to monitor_desc for given slot ID (or NULL if not found)
+ */
+
+static monitor_desc *find_monitor(int16 refNum)
+{
+	vector<monitor_desc *>::const_iterator i, end = VideoMonitors.end();
+	for (i = VideoMonitors.begin(); i != end; ++i) {
+		if ((*i)->getRefNum() == refNum)
+			return *i;
+	}
+	return NULL;
+}
+
+
+monitor_desc::monitor_desc(const vector<VideoInfo> &available_modes, video_depth default_depth, uint32 default_id) : modes(available_modes), refNum(0), csSave(NULL) {
+
+	// Set default mode
+	for (int i = 0; i < modes.size(); i++) {
+		if (modes[i].viAppleMode == default_id) {
+			cur_mode = i;
+			break; // TODO is the first one the best match here
+		}
+	}
+
+}
 
 
 // Function pointers of imported functions
@@ -105,7 +130,7 @@ void NQDMisc(uint32 arg1, uintptr arg2)
 
 
 // Prototypes
-static int16 set_gamma(VidLocals *csSave, uint32 gamma);
+static int16 set_vidlocals_gamma(VidLocals *csSave, uint32 gamma);
 
 
 /*
@@ -122,10 +147,10 @@ bool VideoActivated(void)
  *  Create RGB snapshot of current screen
  */
 
-bool VideoSnapshot(int xsize, int ysize, uint8 *p)
+bool monitor_desc::VideoSnapshot(int xsize, int ysize, uint8 *p)
 {
 	if (display_type == DIS_WINDOW) {
-		uint8 *screen = (uint8 *)private_data->saveBaseAddr;
+		uint8 *screen = (uint8 *)csSave->saveBaseAddr;
 		uint32 row_bytes = VModes[cur_mode].viRowBytes;	
 		uint32 y2size = VModes[cur_mode].viYsize;
 		uint32 x2size = VModes[cur_mode].viXsize;
@@ -157,7 +182,19 @@ static bool UseHardwareCursor(void)
  *  Video driver open routine
  */
 
-static int16 VideoOpen(uint32 pb, VidLocals *csSave)
+static int16 VideoOpen(uint32 pb)
+{
+	int16 refNum = (int16)ReadMacInt16(pb + ioRefNum);
+	monitor_desc * monitor = find_monitor(refNum);
+	if (monitor) {
+		return monitor->video_open(pb);
+	} else {
+		return openErr;
+	}
+}
+
+
+int16 monitor_desc::video_open(uint32 pb)
 {
 	D(bug("Video Open\n"));
 
@@ -180,7 +217,7 @@ static int16 VideoOpen(uint32 pb, VidLocals *csSave)
 	// Find and set default gamma table
 	csSave->gammaTable = 0;
 	csSave->maxGammaTableSize = 0;
-	set_gamma(csSave, 0);
+	set_vidlocals_gamma(csSave, 0);
 
 	// Install and activate interrupt service
 	SheepVar32 theServiceID = 0;
@@ -216,7 +253,7 @@ static bool allocate_gamma_table(VidLocals *csSave, uint32 size)
 	 return a > b? a : b;
  }
 
-static int16 set_gamma(VidLocals *csSave, uint32 gamma)
+static int16 set_vidlocals_gamma(VidLocals *csSave, uint32 gamma)
 {
 	if (gamma == 0) { // Build linear ramp, 256 entries
 
@@ -301,7 +338,19 @@ static int16 set_gamma(VidLocals *csSave, uint32 gamma)
 	return noErr;
 }
 
-static int16 VideoControl(uint32 pb, VidLocals *csSave)
+static int16 VideoControl(uint32 pb)
+{
+
+	int16 refNum = (int16)ReadMacInt16(pb + ioRefNum);
+	monitor_desc * monitor = find_monitor(refNum);
+	if (monitor) {
+		return monitor->video_control(pb);
+	} else {
+		return controlErr;
+	}
+}
+
+int16 monitor_desc::video_control(uint32 pb)
 {
 	int16 code = ReadMacInt16(pb + csCode);
 	D(bug("VideoControl %d: ", code));
@@ -321,7 +370,7 @@ static int16 VideoControl(uint32 pb, VidLocals *csSave)
 			D(bug("mode:%04x page:%04x \n", ReadMacInt16(param + csMode),
 				ReadMacInt16(param + csPage)));
 			WriteMacInt32(param + csData, csSave->saveData);
-			return video_mode_change(csSave, param);
+			return video_mode_change(this, csSave, param);
 
 		case cscSetEntries: {							// SetEntries
 			D(bug("SetEntries\n"));					
@@ -407,7 +456,7 @@ static int16 VideoControl(uint32 pb, VidLocals *csSave)
 		case cscSetGamma: {							// SetGamma
 			uint32 user_table = ReadMacInt32(param + csGTable);
 			D(bug("SetGamma %08x\n", user_table));
-			return set_gamma(csSave, user_table);
+			return set_vidlocals_gamma(csSave, user_table);
 		}
 
 		case cscGrayPage: {							// GrayPage
@@ -459,7 +508,7 @@ static int16 VideoControl(uint32 pb, VidLocals *csSave)
 		case cscSwitchMode:
 			D(bug("cscSwitchMode (Display Manager support) \nMode:%02x ID:%04x Page:%d\n",
 			  ReadMacInt16(param + csMode), ReadMacInt32(param + csData), ReadMacInt16(param + csPage)));
-			return video_mode_change(csSave, param);
+			return video_mode_change(this, csSave, param);
 
 		case cscSavePreferredConfiguration:
 			D(bug("SavePreferredConfiguration\n"));
@@ -657,10 +706,22 @@ static void get_size_of_resolution(int id, uint32 &x, uint32 &y)
 	x = y = 0;
 }
 
-static int16 VideoStatus(uint32 pb, VidLocals *csSave)
+static int16 VideoStatus(uint32 pb)
 {
+	int16 refNum = (int16)ReadMacInt16(pb + ioRefNum);
+	monitor_desc * monitor = find_monitor(refNum);
+	if (monitor) {
+		return monitor->video_status(pb);
+	} else {
+		return statusErr;
+	}
+}
+
+int16 monitor_desc::video_status(uint32 pb)
+{
+	//uint8 slot_id = ReadMacInt8(dce + dCtlSlotId);
 	int16 code = ReadMacInt16(pb + csCode);
-	D(bug("VideoStatus %d: ", code));
+	D(bug("VideoStatus(%d) %d: ", refNum, code));
 	uint32 param = ReadMacInt32(pb + csParam);
 	switch (code) {
 
@@ -1011,15 +1072,50 @@ static int16 VideoStatus(uint32 pb, VidLocals *csSave)
  *  Video driver close routine
  */
 
-static int16 VideoClose(uint32 pb, VidLocals *csSave)
+static int16 VideoClose(uint32 pb)
 {
 	D(bug("VideoClose\n"));
+	int16 refNum = (int16)ReadMacInt16(pb + ioRefNum);
+	monitor_desc * monitor = find_monitor(refNum);
+	if (monitor) {
+		return monitor->video_close(pb);
+	} else {
+		return closErr;
+	}
+}
+
+int16 monitor_desc::video_close(uint32 pb)
+{
 
 	// Delete interrupt service
 	csSave->interruptsEnabled = false;
 	VSLDisposeInterruptService(csSave->vslServiceID);
 
 	return noErr;
+}
+
+void monitor_desc::clear_data() {
+	if (csSave != NULL) {	// Might be left over from a reboot
+		if (csSave->gammaTable)
+			Mac_sysfree(csSave->gammaTable);
+		if (csSave->regEntryID)
+			Mac_sysfree(csSave->regEntryID);
+	}
+	delete csSave;
+	csSave = NULL;
+}
+
+bool monitor_desc::init_data(uint32 commandContents) {
+	csSave = new VidLocals;
+	csSave->gammaTable = 0;
+	csSave->regEntryID = Mac_sysalloc(sizeof(RegEntryID));
+	if (csSave->regEntryID == 0) {
+		printf("FATAL: VideoDoDriverIO(): Can't allocate service owner\n");
+		return false;
+	}
+	Mac2Mac_memcpy(csSave->regEntryID, commandContents + 2, 16);	// DriverInitInfo.deviceEntry
+	csSave->interruptsEnabled = false;	// Disable interrupts
+	return true;
 }
 
 
@@ -1034,14 +1130,22 @@ int16 VideoDoDriverIO(uint32 spaceID, uint32 commandID, uint32 commandContents, 
 
 	switch (commandCode) {
 		case kInitializeCommand:
-		case kReplaceCommand:
-			if (private_data != NULL) {	// Might be left over from a reboot
-				if (private_data->gammaTable)
-					Mac_sysfree(private_data->gammaTable);
-				if (private_data->regEntryID)
-					Mac_sysfree(private_data->regEntryID);
+		case kReplaceCommand: {
+			int16 refNum = ReadMacInt16(commandContents); // DriverInitInfo.refNum
+
+			// First we try to find an existing monitor already set up in the past.
+			monitor_desc * desc = find_monitor(refNum);
+			if (!desc) {
+				// New entries are inserted by the video implementation, with the refNum set to 0.
+				// Find the next unused one and set it up.
+				desc = find_monitor(0);
+				if (!desc) {
+					err = -1;
+					break;
+				}
+				desc->setRefNum(refNum);
 			}
-			delete private_data;
+			desc->clear_data();
 
 			iocic_tvect = FindLibSymbol("\021DriverServicesLib", "\023IOCommandIsComplete");
 			D(bug("IOCommandIsComplete TVECT at %08lx\n", iocic_tvect));
@@ -1078,45 +1182,47 @@ int16 VideoDoDriverIO(uint32 spaceID, uint32 commandID, uint32 commandContents, 
 				err = -1;
 				break;
 			}
+			{
+			D(bug("VideoDoDriverIO init space %08x, command %08x, contents %08x, code %d, kind %d\n", spaceID, commandID, commandContents, commandCode, commandKind));
+			D(bug("video init refNum %d entry %08x%08x%08x%08x\n", refNum,
+				ReadMacInt32(commandContents + 2),
+				ReadMacInt32(commandContents + 2 + 4),
+				ReadMacInt32(commandContents + 2 + 8),
+				ReadMacInt32(commandContents + 2 + 12)
+				));
+			}
 
-			private_data = new VidLocals;
-			private_data->gammaTable = 0;
-			private_data->regEntryID = Mac_sysalloc(sizeof(RegEntryID));
-			if (private_data->regEntryID == 0) {
-				printf("FATAL: VideoDoDriverIO(): Can't allocate service owner\n");
+			if (!desc->init_data(commandContents)) {
 				err = -1;
 				break;
 			}
-			Mac2Mac_memcpy(private_data->regEntryID, commandContents + 2, 16);	// DriverInitInfo.deviceEntry
-			private_data->interruptsEnabled = false;	// Disable interrupts
-			break;
+
+			break; }
 
 		case kFinalizeCommand:
-		case kSupersededCommand:
-			if (private_data != NULL) {
-				if (private_data->gammaTable)
-					Mac_sysfree(private_data->gammaTable);
-				if (private_data->regEntryID)
-					Mac_sysfree(private_data->regEntryID);
+		case kSupersededCommand: {
+			int16 refNum = ReadMacInt16(commandContents); // DriverFinalInfo.refNum
+			monitor_desc * desc = find_monitor(refNum);
+			if (desc) {
+				desc->clear_data();
 			}
-			delete private_data;
-			private_data = NULL;
-			break;
+			break; }
 
 		case kOpenCommand:
-			err = VideoOpen(commandContents, private_data);
+			err = VideoOpen(commandContents);
 			break;
 
 		case kCloseCommand:
-			err = VideoClose(commandContents, private_data);
+			err = VideoClose(commandContents);
 			break;
 
 		case kControlCommand:
-			err = VideoControl(commandContents, private_data);
+			err = VideoControl(commandContents);
 			break;
 
 		case kStatusCommand:
-			err = VideoStatus(commandContents, private_data);
+			D(bug("VideoDoDriverIO status space %08x, command %08x, contents %08x, code %d, kind %d\n", spaceID, commandID, commandContents, commandCode, commandKind));
+			err = VideoStatus(commandContents);
 			break;
 
 		case kReadCommand:
