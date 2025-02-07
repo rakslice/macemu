@@ -121,7 +121,11 @@ static int translate_map_flags(int vm_flags)
 	if (vm_flags & VM_MAP_PRIVATE)
 		flags |= MAP_PRIVATE;
 	if (vm_flags & VM_MAP_FIXED)
+#ifdef MAP_FIXED_NOREPLACE
+		flags |= MAP_FIXED_NOREPLACE;
+#else
 		flags |= MAP_FIXED;
+#endif
 	if (vm_flags & VM_MAP_32BIT)
 		flags |= FORCE_MAP_32BIT;
 	return flags;
@@ -332,7 +336,11 @@ int vm_acquire_fixed(void * addr, size_t size, int options)
 	}
 #elif defined(HAVE_MMAP_VM)
 	int fd = zero_fd;
+#ifdef MAP_FIXED_NOREPLACE
+	int the_map_flags = translate_map_flags(options) | map_flags | MAP_FIXED_NOREPLACE;
+#else
 	int the_map_flags = translate_map_flags(options) | map_flags | MAP_FIXED;
+#endif
 
 	if (mmap((caddr_t)addr, size, VM_PAGE_DEFAULT, the_map_flags, fd, 0) == (void *)MAP_FAILED)
 		return -1;
