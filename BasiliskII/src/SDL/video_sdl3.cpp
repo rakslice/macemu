@@ -2524,7 +2524,7 @@ void SDLDisplayInstance::set_cursor()
 					if (cursor_in_window) {
 						float x, y;
 						SDL_GetMouseState(&x, &y);
-						D(bug("WarpMouse to {%d,%d} via video_set_cursor\n", x, y));
+						D(bug("WarpMouse to {%f,%f} via video_set_cursor\n", x, y));
 						SDL_WarpMouseInWindow(sdl_window, x, y);
 					}
 				}
