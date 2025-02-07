@@ -1151,7 +1151,7 @@ SDL_Surface * SDLDisplayInstance::init_sdl_video(int width, int height, int dept
     return guest_surface;
 }
 
-static int present_sdl_video()
+int SDLDisplayInstance::present_sdl_video()
 {
 	if (SDL_RectEmpty(&sdl_update_video_rect)) return 0;
 	
@@ -1273,7 +1273,7 @@ static int present_sdl_video()
     return 0;
 }
 
-void update_sdl_video(SDL_Surface *s, int numrects, SDL_Rect *rects)
+void SDLDisplayInstance::update_sdl_video(SDL_Surface *s, int numrects, SDL_Rect *rects)
 {
     // TODO: make sure SDL_Renderer resources get displayed, if and when
     // MacsBug is running (and VideoInterrupt() might not get called)
@@ -1285,7 +1285,7 @@ void update_sdl_video(SDL_Surface *s, int numrects, SDL_Rect *rects)
     SDL_UnlockMutex(sdl_update_video_mutex);
 }
 
-void update_sdl_video(SDL_Surface *s, Sint32 x, Sint32 y, Sint32 w, Sint32 h)
+void SDLDisplayInstance::update_sdl_video(SDL_Surface *s, Sint32 x, Sint32 y, Sint32 w, Sint32 h)
 {
     SDL_Rect temp = {x, y, w, h};
     update_sdl_video(s, 1, &temp);
@@ -1303,7 +1303,7 @@ static void MagBits(Uint8 *dst, Uint8 *src, int size) {
 			}
 		}
 }
-static SDL_Cursor *MagCursor(bool hot) {
+SDL_Cursor *SDLDisplayInstance::MagCursor(bool hot) {
 	int w, h;
 	SDL_GetWindowSize(sdl_window, &w, &h);
 	float mag = std::min((float)w / drv->VIDEO_MODE_X, (float)h / drv->VIDEO_MODE_Y);
@@ -1321,23 +1321,14 @@ static SDL_Cursor *MagCursor(bool hot) {
 
 void driver_base::set_video_mode(int flags, int pitch)
 {
-	if ((s = init_sdl_video(VIDEO_MODE_X, VIDEO_MODE_Y, VIDEO_MODE_DEPTH, flags, pitch)) == NULL)
+	if ((s = monitor.sdl_display.init_sdl_video(VIDEO_MODE_X, VIDEO_MODE_Y, VIDEO_MODE_DEPTH, flags, pitch)) == NULL)
 		return;
 #ifdef ENABLE_VOSF
 	the_host_buffer = (uint8 *)s->pixels;
 #endif
 }
 
-void driver_base::init()
-{
-	int pitch = VIDEO_MODE_X;
-	switch (VIDEO_MODE_DEPTH) {
-		case VIDEO_DEPTH_16BIT: pitch <<= 1; break;
-		case VIDEO_DEPTH_32BIT: pitch <<= 2; break;
-	}
-
-	int aligned_height = (VIDEO_MODE_Y + 15) & ~15;
-
+void SDLDisplayInstance::init_buffers(int pitch, int aligned_height, int monitor_desc_num) {
 #ifdef ENABLE_VOSF
 	use_vosf = true;
 	// Allocate memory for frame buffer (SIZE is extended to page-boundary)
@@ -1370,8 +1361,21 @@ void driver_base::init()
 		memset(the_buffer, 0, the_buffer_size);
 		D(bug("the_buffer = %p, the_buffer_copy = %p\n", the_buffer, the_buffer_copy));
 	}
+}
 
-	set_video_mode(display_type == DISPLAY_SCREEN ? SDL_WINDOW_FULLSCREEN : 0, pitch);
+void driver_base::init(int monitor_desc_num)
+{
+	int pitch = VIDEO_MODE_X;
+	switch (VIDEO_MODE_DEPTH) {
+		case VIDEO_DEPTH_16BIT: pitch <<= 1; break;
+		case VIDEO_DEPTH_32BIT: pitch <<= 2; break;
+	}
+
+	int aligned_height = (VIDEO_MODE_Y + 15) & ~15;
+
+	monitor.sdl_display.init_buffers(pitch, aligned_height, monitor_desc_num);
+
+	set_video_mode(monitor.sdl_display.get_display_type() == DISPLAY_SCREEN ? SDL_WINDOW_FULLSCREEN : 0, pitch);
 
 	// Set frame buffer base
 	set_mac_frame_buffer(monitor, VIDEO_MODE_DEPTH, true);
@@ -1379,9 +1383,9 @@ void driver_base::init()
 	adapt_to_video_mode();
 	
 	// set default B/W palette
-	sdl_palette = SDL_CreatePalette(256);
-	sdl_palette->colors[1] = (SDL_Color){ .r = 0, .g = 0, .b = 0, .a = 255 };
-	SDL_SetSurfacePalette(s, sdl_palette);
+	monitor.sdl_display.sdl_palette = SDL_CreatePalette(256);
+	monitor.sdl_display.sdl_palette->colors[1] = (SDL_Color){ .r = 0, .g = 0, .b = 0, .a = 255 };
+	SDL_SetSurfacePalette(s, monitor.sdl_display.sdl_palette);
 
 	if (PrefsFindBool("init_grab") && !PrefsFindBool("hardcursor")) grab_mouse();
 }
@@ -1397,7 +1401,7 @@ void driver_base::adapt_to_video_mode() {
 	visualFormat.Rmask = f->Rmask;
 	visualFormat.Gmask = f->Gmask;
 	visualFormat.Bmask = f->Bmask;
-	Screen_blitter_init(visualFormat, true, mac_depth_of_video_depth(VIDEO_MODE_DEPTH));
+	Screen_blitter_init(visualFormat, true, mac_depth_of_video_depth(VIDEO_MODE_DEPTH), monitor.sdl_display.Screen_blit);
 
 	// Load gray ramp to 8->16/32 expand map
 	if (!IsDirectMode(mode))
@@ -1418,37 +1422,24 @@ void driver_base::adapt_to_video_mode() {
 	if (private_data)
 		private_data->cursorHardware = hardware_cursor;
 #endif
-	SDL_LockMutex(sdl_update_video_mutex);
-	sdl_update_video_rect.x = 0;
-	sdl_update_video_rect.y = 0;
-	sdl_update_video_rect.w = VIDEO_MODE_X;
-	sdl_update_video_rect.h = VIDEO_MODE_Y;
-	SDL_UnlockMutex(sdl_update_video_mutex);
+	SDL_LockMutex(monitor.sdl_display.sdl_update_video_mutex);
+	monitor.sdl_display.sdl_update_video_rect.x = 0;
+	monitor.sdl_display.sdl_update_video_rect.y = 0;
+	monitor.sdl_display.sdl_update_video_rect.w = VIDEO_MODE_X;
+	monitor.sdl_display.sdl_update_video_rect.h = VIDEO_MODE_Y;
+	SDL_UnlockMutex(monitor.sdl_display.sdl_update_video_mutex);
 	
 	// Hide cursor
 	hardware_cursor ? SDL_ShowCursor() : SDL_HideCursor();
 
 	// Set window name/class
-	set_window_name();
+	monitor.sdl_display.set_window_name();
 
 	// Everything went well
 	init_ok = true;
 }
 
-driver_base::~driver_base()
-{
-	ungrab_mouse();
-	restore_mouse_accel();
-
-	delete_sdl_video_surfaces();	// This deletes instances of SDL_Surface and SDL_Texture
-
-	// shutdown_sdl_video() would delete SDL_Window, SDL_Renderer, in addition to
-	// instances of SDL_Surface and SDL_Texture.
-
-	// Do not shut down the window here, in case we are just changing modes and it can be reused.
-	// - If we are changing modes the init_sdl_video() of the next driver is responsible for
-	// cleaning up the old window if it cannot be reused.
-	// - If we are shutting down, VideoExit() will cleanup the window after the driver.
+void SDLDisplayInstance::release_buffers() {
 
 	// the_buffer shall always be mapped through vm_acquire_framebuffer()
 	if (the_buffer != VM_MAP_FAILED) {
@@ -1460,6 +1451,7 @@ driver_base::~driver_base()
 	// Free frame buffer(s)
 	if (!use_vosf) {
 		if (the_buffer_copy) {
+			D(bug(" release the_buffer_copy at %p\n", the_buffer_copy));
 			free(the_buffer_copy);
 			the_buffer_copy = NULL;
 		}
@@ -1476,6 +1468,24 @@ driver_base::~driver_base()
 		video_vosf_exit();
 	}
 #endif
+}
+
+driver_base::~driver_base()
+{
+	ungrab_mouse();
+	restore_mouse_accel();
+
+	monitor.sdl_display.delete_sdl_video_surfaces();	// This deletes instances of SDL_Surface and SDL_Texture
+
+	// shutdown_sdl_video() would delete SDL_Window, SDL_Renderer, in addition to
+	// instances of SDL_Surface and SDL_Texture.
+
+	// Do not shut down the window here, in case we are just changing modes and it can be reused.
+	// - If we are changing modes the init_sdl_video() of the next driver is responsible for
+	// cleaning up the old window if it cannot be reused.
+	// - If we are shutting down, VideoExit() will cleanup the window after the driver.
+
+	monitor.sdl_display.release_buffers();
 
 	SDL_ShowCursor();
 }
@@ -1486,13 +1496,13 @@ void driver_base::update_palette(void)
 	const VIDEO_MODE &mode = monitor.get_current_mode();
 
 	if ((int)VIDEO_MODE_DEPTH <= VIDEO_DEPTH_8BIT) {
-		SDL_SetSurfacePalette(s, sdl_palette);
-		SDL_LockMutex(sdl_update_video_mutex);
-		sdl_update_video_rect.x = 0;
-		sdl_update_video_rect.y = 0;
-		sdl_update_video_rect.w = VIDEO_MODE_X;
-		sdl_update_video_rect.h = VIDEO_MODE_Y;
-		SDL_UnlockMutex(sdl_update_video_mutex);
+		SDL_SetSurfacePalette(s, monitor.sdl_display.sdl_palette);
+		SDL_LockMutex(monitor.sdl_display.sdl_update_video_mutex);
+		monitor.sdl_display.sdl_update_video_rect.x = 0;
+		monitor.sdl_display.sdl_update_video_rect.y = 0;
+		monitor.sdl_display.sdl_update_video_rect.w = VIDEO_MODE_X;
+		monitor.sdl_display.sdl_update_video_rect.h = VIDEO_MODE_Y;
+		SDL_UnlockMutex(monitor.sdl_display.sdl_update_video_mutex);
 	}
 }
 
@@ -1515,7 +1525,7 @@ void driver_base::toggle_mouse_grab(void)
 		grab_mouse();
 }
 
-static void update_mouse_grab()
+void SDLDisplayInstance::update_mouse_grab()
 {
 	SDL_SetWindowRelativeMouseMode(sdl_window, mouse_grabbed);
 }
@@ -1525,8 +1535,8 @@ void driver_base::grab_mouse(void)
 {
 	if (!mouse_grabbed) {
 		mouse_grabbed = true;
-		update_mouse_grab();
-		set_window_name();
+		monitor.sdl_display.update_mouse_grab();
+		monitor.sdl_display.set_window_name();
 		disable_mouse_accel();
 		ADBSetRelMouseMode(true);
 	}
@@ -1537,8 +1547,8 @@ void driver_base::ungrab_mouse(void)
 {
 	if (mouse_grabbed) {
 		mouse_grabbed = false;
-		update_mouse_grab();
-		set_window_name();
+		monitor.sdl_display.update_mouse_grab();
+		monitor.sdl_display.set_window_name();
 		restore_mouse_accel();
 		ADBSetRelMouseMode(false);
 	}
@@ -1630,7 +1640,7 @@ static void keycode_init(void)
 // Open display for current mode
 bool SDL_monitor_desc::video_open(void)
 {
-	D(bug("video_open()\n"));
+	D(bug("video_open(%d) %p\n", monitor_desc_num, this));
 #if DEBUG
 	const VIDEO_MODE &mode = get_current_mode();
 	D(bug("Current video mode:\n"));
@@ -1641,37 +1651,44 @@ bool SDL_monitor_desc::video_open(void)
 	drv = new(std::nothrow) driver_base(*this);
 	if (drv == NULL)
 		return false;
-	drv->init();
+	sdl_display.set_driver_base(drv);
+	drv->init(monitor_desc_num);
 	if (!drv->init_ok) {
 		delete drv;
 		drv = NULL;
+		sdl_display.set_driver_base(NULL);
 		return false;
 	}
+
+	// FIXME Figure out better logic for this than just always doing it whenever the first monitor is changing
+	if (monitor_desc_num == 0) {
 
 #ifdef WIN32
-	// Chain in a new message handler for WM_DEVICECHANGE
-	HWND the_window = GetMainWindowHandle();
-	sdl_window_proc = (WNDPROC)GetWindowLongPtr(the_window, GWLP_WNDPROC);
-	SetWindowLongPtr(the_window, GWLP_WNDPROC, (LONG_PTR)windows_message_handler);
+		// Chain in a new message handler for WM_DEVICECHANGE
+		HWND the_window = GetMainWindowHandle();
+		sdl_window_proc = (WNDPROC)GetWindowLongPtr(the_window, GWLP_WNDPROC);
+		SetWindowLongPtr(the_window, GWLP_WNDPROC, (LONG_PTR)windows_message_handler);
 #endif
 
-	// Initialize VideoRefresh function
-	VideoRefreshInit();
+		// Initialize VideoRefresh function
+		VideoRefreshInit();
 
-	// Lock down frame buffer
-	LOCK_FRAME_BUFFER;
+		// Lock down frame buffer
+		LOCK_FRAME_BUFFER;
 
-	// Start redraw/input thread
+		// Start redraw/input thread
 #ifndef USE_CPU_EMUL_SERVICES
-	redraw_thread_cancel = false;
-	redraw_thread_active = ((redraw_thread = SDL_CreateThread(redraw_func, "Redraw Thread", NULL)) != NULL);
-	if (!redraw_thread_active) {
-		printf("FATAL: cannot create redraw thread\n");
-		return false;
-	}
+		redraw_thread_cancel = false;
+		redraw_thread_active = ((redraw_thread = SDL_CreateThread(redraw_func, "Redraw Thread", NULL)) != NULL);
+		if (!redraw_thread_active) {
+			printf("FATAL: cannot create redraw thread\n");
+			return false;
+		}
 #else
-	redraw_thread_active = true;
+		redraw_thread_active = true;
 #endif
+
+	}
 	return true;
 }
 
@@ -1727,7 +1744,7 @@ bool VideoInit(bool classic)
 		default_width = 640;
 		default_height = 480;
 	}
-	display_type = DISPLAY_WINDOW;
+	int display_type = DISPLAY_WINDOW;
 	if (mode_str) {
 		if (sscanf(mode_str, "win/%d/%d", &default_width, &default_height) == 2)
 			display_type = DISPLAY_WINDOW;
@@ -1751,7 +1768,7 @@ bool VideoInit(bool classic)
 		default_height = sdl_display_height();
 
 	// Mac screen depth follows X depth
-	screen_depth = 32;
+	int screen_depth = 32;
 	const SDL_DisplayMode *desktop_mode = SDL_GetDesktopDisplayMode(0);
 	if (desktop_mode != NULL) {
 		screen_depth = SDL_BITSPERPIXEL(desktop_mode->format);
@@ -1888,11 +1905,29 @@ bool VideoInit(bool classic)
 	D(bug("Return get_customized_color_depth %d\n", color_depth));
 
 	// Create SDL_monitor_desc for this (the only) display
-	SDL_monitor_desc *monitor = new SDL_monitor_desc(VideoModes, (video_depth)color_depth, default_id);
+	SDL_monitor_desc *monitor = new SDL_monitor_desc(VideoModes, (video_depth)color_depth, default_id, 0);
+	monitor->sdl_display.set_display_type(display_type);
 	VideoMonitors.push_back(monitor);
 
 	// Open display
-	return monitor->video_open();
+	bool ret = monitor->video_open();
+
+	if (ret) {
+		int second_display_num = PrefsFindInt32("add_display");
+		if (second_display_num >= 1) {
+			monitor = new SDL_monitor_desc(VideoModes, (video_depth)color_depth, default_id, 1);
+			monitor->sdl_display.set_display_type(display_type);
+			VideoMonitors.push_back(monitor);
+
+			ret = monitor->video_open();
+			if (!ret) {
+				monitor = (SDL_monitor_desc *)*(VideoMonitors.begin());
+				monitor->video_close();
+			}
+		}
+	}
+
+	return ret;
 }
 
 
@@ -1903,40 +1938,47 @@ bool VideoInit(bool classic)
 // Close display
 void SDL_monitor_desc::video_close(void)
 {
-	D(bug("video_close()\n"));
+	D(bug("video_close(%d)\n", monitor_desc_num));
+
+	if (monitor_desc_num == 0) {
 
 #ifdef WIN32
-	// Remove message handler for WM_DEVICECHANGE
-	HWND the_window = GetMainWindowHandle();
-	SetWindowLongPtr(the_window, GWLP_WNDPROC, (LONG_PTR)sdl_window_proc);
+		// Remove message handler for WM_DEVICECHANGE
+		HWND the_window = GetMainWindowHandle();
+		SetWindowLongPtr(the_window, GWLP_WNDPROC, (LONG_PTR)sdl_window_proc);
 #endif
 
-	// Stop redraw thread
+		// Stop redraw thread
 #ifndef USE_CPU_EMUL_SERVICES
-	if (redraw_thread_active) {
-		redraw_thread_cancel = true;
-		SDL_WaitThread(redraw_thread, NULL);
-	}
+		if (redraw_thread_active) {
+			redraw_thread_cancel = true;
+			SDL_WaitThread(redraw_thread, NULL);
+		}
 #endif
-	redraw_thread_active = false;
+		redraw_thread_active = false;
 
-	// Unlock frame buffer
-	UNLOCK_FRAME_BUFFER;
-	D(bug(" frame buffer unlocked\n"));
+		// Unlock frame buffer
+		UNLOCK_FRAME_BUFFER;
+		D(bug(" frame buffer unlocked\n"));
+
+	}
 
 	// Close display
+	D(bug("video_close(%d) deleting drv\n", monitor_desc_num));
 	delete drv;
 	drv = NULL;
+	sdl_display.set_driver_base(NULL);
 }
 
 void VideoExit(void)
 {
 	// Close displays
 	vector<monitor_desc *>::iterator i, end = VideoMonitors.end();
-	for (i = VideoMonitors.begin(); i != end; ++i)
-		dynamic_cast<SDL_monitor_desc *>(*i)->video_close();
-
-	shutdown_sdl_video();
+	for (i = VideoMonitors.begin(); i != end; ++i) {
+		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		sdm->video_close();
+		sdm->sdl_display.shutdown_sdl_video();
+	}
 
 	// Destroy locks
 	if (frame_buffer_lock)
@@ -1962,8 +2004,9 @@ static void ApplyGammaRamp() {
 // gamma functionarity has been removed from SDL3
 }
 
-static void do_toggle_fullscreen(void)
+void SDLDisplayInstance::do_toggle_fullscreen(void)
 {
+	D(bug("starting toggle fullscreen\n"));
 #ifndef USE_CPU_EMUL_SERVICES
 	// pause redraw thread
 	thread_stop_ack = false;
@@ -1976,7 +2019,7 @@ static void do_toggle_fullscreen(void)
 		if (display_type == DISPLAY_SCREEN) {
 			display_type = DISPLAY_WINDOW;
 			SDL_SetWindowFullscreen(sdl_window, false);
-			const VIDEO_MODE &mode = drv->mode;
+			const VIDEO_MODE &mode = drv()->mode;
 			float m = get_mag_rate();
 			SDL_SetWindowSize(sdl_window, m * VIDEO_MODE_X, m * VIDEO_MODE_Y);
 #ifndef SDL_PLATFORM_MACOS
@@ -2031,14 +2074,14 @@ static void do_toggle_fullscreen(void)
 	}
 
 	// switch modes
-	drv->adapt_to_video_mode();
+	drv()->adapt_to_video_mode();
 
 	// reset the palette
 #ifdef SHEEPSHAVER
 	video_set_palette();
 #endif
 	ApplyGammaRamp();
-	drv->update_palette();
+	drv()->update_palette();
 
 	// reset the video refresh handler
 	VideoRefreshInit();
@@ -2051,6 +2094,7 @@ static void do_toggle_fullscreen(void)
 #ifndef USE_CPU_EMUL_SERVICES
 	thread_stop_req = false;
 #endif
+	D(bug("finished window toggle fullscreen\n"));
 }
 
 /*
@@ -2061,7 +2105,7 @@ static void do_toggle_fullscreen(void)
  *  Execute video VBL routine
  */
 
-static bool is_fullscreen(SDL_Window * window)
+bool SDLDisplayInstance::is_fullscreen(SDL_Window * window)
 {
 #ifdef SDL_PLATFORM_MACOS
 	// On OSX, SDL, at least as of 2.0.5 (and possibly beyond), does not always
@@ -2087,15 +2131,11 @@ void VideoVBL(void)
 	if (emerg_quit)
 		QuitEmulator();
 
-#ifdef VIDEO_CHROMAKEY
-	if (display_type == DISPLAY_CHROMAKEY)
-		make_window_transparent(sdl_window);
-	else
-#endif
-	if (toggle_fullscreen)
-		do_toggle_fullscreen();
-
-	present_sdl_video();
+	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
+		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		if (sdm->sdl_display.drv()->init_ok)
+			sdm->sdl_display.interrupt_time();
+	}	
 
 	// Temporarily give up frame buffer lock (this is the point where
 	// we are suspended when the user presses Ctrl-Tab)
@@ -2121,15 +2161,31 @@ void VideoInterrupt(void)
 		make_window_transparent(sdl_window);
 	else
 #endif
-	if (toggle_fullscreen)
-		do_toggle_fullscreen();
-
-	present_sdl_video();
+	
+	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
+		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		if (sdm->sdl_display.drv()->init_ok)
+			sdm->sdl_display.interrupt_time();
+	}
 
 	// Temporarily give up frame buffer lock (this is the point where
 	// we are suspended when the user presses Ctrl-Tab)
 	UNLOCK_FRAME_BUFFER;
 	LOCK_FRAME_BUFFER;
+}
+
+void SDLDisplayInstance::interrupt_time() {
+#ifdef SHEEPSHAVER
+#ifdef VIDEO_CHROMAKEY
+	if (display_type == DISPLAY_CHROMAKEY)
+		make_window_transparent(sdl_window);
+	else
+#endif
+#endif
+	if (toggle_fullscreen)
+		do_toggle_fullscreen();
+
+	present_sdl_video();
 }
 #endif
 
@@ -2176,11 +2232,11 @@ void SDL_monitor_desc::set_palette(uint8 *pal, int num_in)
 	int num_out = 256;
 	bool stretch = false;
 	
-	if (!sdl_palette) {
-		sdl_palette = SDL_CreatePalette(num_out);
+	if (!sdl_display.sdl_palette) {
+		sdl_display.sdl_palette = SDL_CreatePalette(num_out);
 	}
 	
-	SDL_Color *p = sdl_palette->colors;
+	SDL_Color *p = sdl_display.sdl_palette->colors;
 	for (int i=0; i<num_out; i++) {
 		int c = (stretch ? (i * num_in) / num_out : i);
 		p->r = pal[c*3 + 0] * 0x0101;
@@ -2208,7 +2264,7 @@ void SDL_monitor_desc::set_palette(uint8 *pal, int num_in)
 	}
 
 	// Tell redraw thread to change palette
-	sdl_palette_changed = true;
+	sdl_display.sdl_palette_changed = true;
 
 	UNLOCK_PALETTE;
 }
@@ -2490,8 +2546,8 @@ static int event2keycode(SDL_KeyboardEvent const &key, bool key_down)
 	case SDLK_PERIOD: case SDLK_GREATER: return 0x2f;
 	case SDLK_SLASH: case SDLK_QUESTION: return 0x2c;
 
-	case SDLK_TAB: if (is_hotkey_down(key)) {if (!key_down) drv->suspend(); return CODE_HOTKEY;} else return 0x30;
-	case SDLK_RETURN: if (is_hotkey_down(key)) {if (!key_down) toggle_fullscreen = true; return CODE_HOTKEY;} else return 0x24;
+	case SDLK_TAB: if (is_hotkey_down(key)) {if (!key_down) first_drv()->suspend(); return CODE_HOTKEY;} else return 0x30;
+	case SDLK_RETURN: if (is_hotkey_down(key)) {if (!key_down) toggle_all_fullscreen(); return CODE_HOTKEY;} else return 0x24;
 	case SDLK_SPACE: return 0x31;
 	case SDLK_BACKSPACE: return 0x33;
 
@@ -2558,7 +2614,7 @@ static int event2keycode(SDL_KeyboardEvent const &key, bool key_down)
 	return CODE_INVALID;
 }
 
-static void force_complete_window_refresh()
+void SDLDisplayInstance::force_complete_window_refresh()
 {
 	if (display_type == DISPLAY_WINDOW) {
 #ifdef ENABLE_VOSF
@@ -2600,7 +2656,7 @@ static bool SDLCALL on_sdl_event_generated(void *userdata, SDL_Event *event)
 			switch (key.key) {
 				case SDLK_F5: {
 					if (is_hotkey_down(key) && !PrefsFindBool("hardcursor")) {
-						drv->toggle_mouse_grab();
+						first_drv()->toggle_mouse_grab();
 						return EVENT_DROP_FROM_QUEUE;
 					}
 				} break;
@@ -2616,6 +2672,40 @@ static bool SDLCALL on_sdl_event_generated(void *userdata, SDL_Event *event)
 	return EVENT_ADD_TO_QUEUE;
 }
 
+static driver_base * first_drv() {
+	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
+		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		return sdm->sdl_display.drv();
+	}
+	return NULL;
+}
+
+
+static void toggle_all_fullscreen() {
+	int num = 0;
+	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
+		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		D(bug("Set toggle fullscreen %d\n", num));
+		sdm->sdl_display.set_toggle_fullscreen();
+		num ++;
+	}
+}
+
+
+bool SDLDisplayInstance::has_window_id(SDL_WindowID win_id) const
+{
+	return sdl_window && SDL_GetWindowID(sdl_window) == win_id;
+}
+
+static SDLDisplayInstance * display_instance_for_windowID(SDL_WindowID win_id)
+{
+	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
+		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		if (sdm->sdl_display.has_window_id(win_id))
+			return &sdm->sdl_display;
+	}
+	return NULL;
+}
 
 static void handle_events(void)
 {
@@ -2654,9 +2744,15 @@ static void handle_events(void)
 			// Mouse moved
 			case SDL_EVENT_MOUSE_MOTION:
 				if (mouse_grabbed) {
-					drv->mouse_moved(event.motion.xrel, event.motion.yrel);
+					// for the purpose of grabbed we can just always put the events through the first window
+					first_drv()->mouse_moved(event.motion.xrel, event.motion.yrel);
 				} else {
-					SDL_ConvertEventToRenderCoordinates(sdl_renderer, &event);
+					SDLDisplayInstance * sdi = display_instance_for_windowID(event.motion.windowID);
+					if (!sdi) {
+						// event wasn't associated with any window
+						break;
+					}
+					SDL_ConvertEventToRenderCoordinates(sdi->renderer(), &event);
 #ifdef VIDEO_CHROMAKEY
 					if (display_type == DISPLAY_CHROMAKEY) {
 						int xl, yl;
@@ -2668,7 +2764,25 @@ static void handle_events(void)
 						set_mouse_ignore(sdl_window, *(uint32 *)p == VIDEO_CHROMAKEY);
 					}
 #endif
-					drv->mouse_moved(event.motion.x, event.motion.y);
+					D(bug("move: %d, %f,%f\n", event.motion.windowID, event.motion.x, event.motion.y));
+
+					static bool prev_clipped = false;
+
+					// clip events to the actual window
+					if (event.motion.x >= 0 && event.motion.x < sdi->drv()->mode.x &&
+						event.motion.y >= 0 && event.motion.y < sdi->drv()->mode.y) {
+
+							sdi->drv()->mouse_moved(event.motion.x, event.motion.y);
+							if (prev_clipped) {
+								SDL_HideCursor();
+								prev_clipped = false;
+							}
+					} else {
+						if (!prev_clipped) {
+							SDL_ShowCursor();
+							prev_clipped = true;
+						}
+					}
 				}
 				break;
 
@@ -2713,7 +2827,7 @@ static void handle_events(void)
 						
 					} else {
 						if (code == 0x31)
-							drv->resume();	// Space wakes us up
+							first_drv()->resume();	// Space wakes us up
 					}
 				}
 				break;
@@ -2738,15 +2852,21 @@ static void handle_events(void)
 				break;
 			}
 			
-			case SDL_EVENT_WINDOW_EXPOSED:
+			case SDL_EVENT_WINDOW_EXPOSED: {
 				// Hidden parts exposed, force complete refresh of window
-				force_complete_window_refresh();
+				SDLDisplayInstance * sdi = display_instance_for_windowID(event.window.windowID);
+				if (sdi)
+					sdi->force_complete_window_refresh();
 				break;
+			}
 					
-			case SDL_EVENT_WINDOW_RESTORED:
+			case SDL_EVENT_WINDOW_RESTORED: {
 				// Force a complete window refresh when activating, to avoid redraw artifacts otherwise.
-				force_complete_window_refresh();
+				SDLDisplayInstance * sdi = display_instance_for_windowID(event.window.windowID);
+				if (sdi)
+					sdi->force_complete_window_refresh();
 				break;
+			}
 
 			// Window "close" widget clicked
 			case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
@@ -2774,6 +2894,10 @@ static void update_display_static(driver_base *drv)
 	int bytes_per_row = VIDEO_MODE_ROW_BYTES;
 	uint8 *p, *p2;
 	uint32 x2_clipped, wide_clipped;
+
+	uint8 *the_buffer = drv->monitor.sdl_display.host_buffer();
+	uint8 *the_buffer_copy = drv->monitor.sdl_display.host_buffer_copy();
+	Screen_blit_func Screen_blit = drv->monitor.sdl_display.Screen_blit;
 
 	// Check for first line from top and first line from bottom that have changed
 	y1 = 0;
@@ -2856,7 +2980,7 @@ static void update_display_static(driver_base *drv)
 					SDL_UnlockSurface(drv->s);
 
 				// Refresh display
-				update_sdl_video(drv->s, x1, y1, wide_clipped, high);
+				drv->monitor.sdl_display.update_sdl_video(drv->s, x1, y1, wide_clipped, high);
 			}
 
 		} else {
@@ -2912,7 +3036,7 @@ static void update_display_static(driver_base *drv)
 					SDL_UnlockSurface(drv->s);
 
 				// Refresh display
-				update_sdl_video(drv->s, x1, y1, wide, high);
+				drv->monitor.sdl_display.update_sdl_video(drv->s, x1, y1, wide, high);
 			}
 		}
 	}
@@ -2931,6 +3055,13 @@ static void update_display_static_bbox(driver_base *drv)
 	const uint32 n_y_boxes = (VIDEO_MODE_Y + N_PIXELS - 1) / N_PIXELS;
 	SDL_Rect *boxes = (SDL_Rect *)alloca(sizeof(SDL_Rect) * n_x_boxes * n_y_boxes);
 	uint32 nr_boxes = 0;
+
+	uint8 *the_buffer = drv->monitor.sdl_display.host_buffer();
+	uint8 *the_buffer_copy = drv->monitor.sdl_display.host_buffer_copy();
+	Screen_blit_func Screen_blit = drv->monitor.sdl_display.Screen_blit;
+
+	// FIXME precaution for surface not init
+	if (!drv->s) return;
 
 	// Lock surface, if required
 	if (SDL_MUSTLOCK(drv->s))
@@ -2976,7 +3107,7 @@ static void update_display_static_bbox(driver_base *drv)
 
 	// Refresh display
 	if (nr_boxes)
-		update_sdl_video(drv->s, nr_boxes, boxes);
+		drv->monitor.sdl_display.update_sdl_video(drv->s, nr_boxes, boxes);
 }
 
 
@@ -2992,9 +3123,20 @@ static inline void possibly_quit_dga_mode()
 	// want to give control back to the user)
 	if (quit_full_screen) {
 		quit_full_screen = false;
-		delete drv;
-		drv = NULL;
+
+		for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
+			SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+
+			sdm->emergency_stop();
+		}
 	}
+}
+
+void SDL_monitor_desc::emergency_stop()
+{
+	delete drv;
+	drv = NULL;
+	sdl_display.set_driver_base(NULL);
 }
 
 static inline void possibly_ungrab_mouse()
@@ -3003,18 +3145,18 @@ static inline void possibly_ungrab_mouse()
 	// want to give control back to the user)
 	if (quit_full_screen) {
 		quit_full_screen = false;
-		if (drv)
-			drv->ungrab_mouse();
+		if (first_drv())
+			first_drv()->ungrab_mouse();
 	}
 }
 
-static inline void handle_palette_changes(void)
+inline void SDLDisplayInstance::handle_palette_changes(void)
 {
 	LOCK_PALETTE;
 
 	if (sdl_palette_changed) {
 		sdl_palette_changed = false;
-		drv->update_palette();
+		drv()->update_palette();
 	}
 
 	UNLOCK_PALETTE;
@@ -3055,7 +3197,7 @@ static void video_refresh_window_vosf(void)
 	possibly_ungrab_mouse();
 	
 	// Update display (VOSF variant)
-	static uint32 tick_counter = 0;
+	uint32 & tick_counter = sdm->sdl_display.tick_counter;
 	if (++tick_counter >= frame_skip) {
 		tick_counter = 0;
 		if (mainBuffer.dirty) {
@@ -3072,15 +3214,22 @@ static void video_refresh_window_static(void)
 	// Ungrab mouse if requested
 	possibly_ungrab_mouse();
 
-	// Update display (static variant)
-	static uint32 tick_counter = 0;
-	if (++tick_counter >= frame_skip) {
-		tick_counter = 0;
-		const VIDEO_MODE &mode = drv->mode;
-		if ((int)VIDEO_MODE_DEPTH >= VIDEO_DEPTH_8BIT)
-			update_display_static_bbox(drv);
-		else
-			update_display_static(drv);
+	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
+		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		driver_base * drv = sdm->sdl_display.drv();
+
+		if (drv && drv->init_ok) {
+			// Update display (static variant)
+			uint32 & tick_counter = sdm->sdl_display.tick_counter;
+			if (++tick_counter >= frame_skip) {
+				tick_counter = 0;
+				const VIDEO_MODE &mode = drv->mode;
+				if ((int)VIDEO_MODE_DEPTH >= VIDEO_DEPTH_8BIT)
+					update_display_static_bbox(drv);
+				else
+					update_display_static(drv);
+			}
+		}
 	}
 }
 
@@ -3092,7 +3241,7 @@ static void video_refresh_window_static(void)
 static void VideoRefreshInit(void)
 {
 	// TODO: set up specialised 8bpp VideoRefresh handlers ?
-	if (display_type == DISPLAY_SCREEN) {
+	if (first_drv()->monitor.sdl_display.get_display_type() == DISPLAY_SCREEN) {
 #if ENABLE_VOSF && (REAL_ADDRESSING || DIRECT_ADDRESSING)
 		if (use_vosf)
 			video_refresh = video_refresh_dga_vosf;
@@ -3118,9 +3267,11 @@ static inline void do_video_refresh(void)
 	// Update display
 	video_refresh();
 
-
-	// Set new palette if it was changed
-	handle_palette_changes();
+	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
+		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		// Set new palette if it was changed
+		sdm->sdl_display.handle_palette_changes();
+	}
 }
 
 // This function is called on non-threaded platforms from a timer interrupt

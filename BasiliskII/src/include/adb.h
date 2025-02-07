@@ -26,7 +26,7 @@ extern void ADBExit(void);
 
 extern void ADBOp(uint8 op, uint8 *data);
 
-extern void ADBMouseMoved(int x, int y);
+extern void ADBMouseMoved(int x, int y, int disp);
 extern void ADBMouseDown(int button);
 extern void ADBMouseUp(int button);
 

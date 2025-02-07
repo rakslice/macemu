@@ -44,7 +44,10 @@
 
 // Global variables
 static int mouse_x = 0, mouse_y = 0;							// Mouse position
+static int mouse_disp = 0;
 static int old_mouse_x = 0, old_mouse_y = 0;
+static int old_mouse_disp = -1;
+static int mouse_disp_left = 0, mouse_disp_top = 0, mouse_disp_bottom = 0, mouse_disp_right = 0;
 static bool mouse_button[3] = {false, false, false};			// Mouse button states
 static bool old_mouse_button[3] = {false, false, false};
 static bool relative_mouse = false;
@@ -71,6 +74,10 @@ static uint8 m_keyboard_type = 0x05;
 
 // ADB mouse motion lock (for platforms that use separate input thread)
 static B2_mutex *mouse_lock;
+
+
+// Prototypes
+void get_gdevice_display_coords(int device_num, int & left, int & top);
 
 
 /*
@@ -231,18 +238,17 @@ void ADBOp(uint8 op, uint8 *data)
 			data[0] = 0;								// Talk: 0 bytes of data
 }
 
-
 /*
  *  Mouse was moved (x/y are absolute or relative, depending on ADBSetRelMouseMode())
  */
 
-void ADBMouseMoved(int x, int y)
+void ADBMouseMoved(int x, int y, int disp)
 {
 	B2_lock_mutex(mouse_lock);
 	if (relative_mouse) {
 		mouse_x += x; mouse_y += y;
 	} else {
-		mouse_x = x; mouse_y = y;
+		mouse_x = x; mouse_y = y; mouse_disp = disp;
 	}
 	B2_unlock_mutex(mouse_lock);
 	SetInterruptFlag(INTFLAG_ADB);
@@ -332,6 +338,53 @@ void ADBKeyUp(int code)
 	TriggerInterrupt();
 }
 
+enum {
+	gdRefNum = 0,
+	gdNextGD = 30,
+	gdRect = 34
+};
+
+
+// Get the mac desktop global coordinates for a given display from its QuickDraw GDevice
+void get_gdevice_display_coords(int device_num, int & top, int & left, int & bottom, int & right)
+{
+	D(bug("Looking for GDevice for %d\n", device_num));
+
+	// slot   refnum
+	// 129 -> -50
+	// 128 -> -49
+
+	int targetRefNum = -device_num + 79;
+	D(bug(" (refnum %d)\n", targetRefNum));
+
+	int i = 0;
+	uint32 ptr = ReadMacInt32(0x8a8); // DeviceList
+	while (ptr != 0) {
+		uint32 curGDevice = ReadMacInt32(ptr);
+		D(bug("gdevice at 0x%x\n", curGDevice));
+		int refNum = (int16)ReadMacInt16(curGDevice + gdRefNum);
+		int t, l, b, r;
+		t = (int16)ReadMacInt16(curGDevice + gdRect);
+		l = (int16)ReadMacInt16(curGDevice + gdRect + 2);
+		b = (int16)ReadMacInt16(curGDevice + gdRect + 4);
+		r = (int16)ReadMacInt16(curGDevice + gdRect + 6);
+		uint32 next = ReadMacInt32(curGDevice + gdNextGD);
+		D(bug("gdevice %d: refnum %d rect %d %d %d %d, next %d \n", i, refNum, t, l, b, r, next));
+
+		if (refNum == targetRefNum) {
+			D(bug("  using this one\n"));
+			top = t;
+			left = l;
+			bottom = b;
+			right = r;
+		}
+
+		i++;
+
+		if (next == 0) break;
+		ptr = next;
+	}
+}
 
 /*
  *  ADB interrupt function (executed as part of 60Hz interrupt)
@@ -396,6 +449,15 @@ void ADBInterrupt(void)
 	} else {
 
 		// Update mouse position (absolute)
+		if (mouse_disp != old_mouse_disp) {
+			// We have an absolute mouse position in terms of a particular display, but
+			// for the registers we need the position in mac desktop global coordinates.
+			// Fetch the global desktop coordinates of the display so that we can convert
+			get_gdevice_display_coords(mouse_disp, mouse_disp_top, mouse_disp_left, mouse_disp_bottom, mouse_disp_right);
+
+			old_mouse_disp = mouse_disp;
+		}
+
 		if (mx != old_mouse_x || my != old_mouse_y) {
 #ifdef POWERPC_ROM
 			static const uint8 proc_template[] = {
@@ -408,14 +470,16 @@ void ADBInterrupt(void)
 			};
 			BUILD_SHEEPSHAVER_PROCEDURE(proc);
 			r.a[0] = ReadMacInt32(mouse_base + 4);
-			r.d[0] = mx;
-			r.d[1] = my;
+			r.d[0] = mx + mouse_disp_left;
+			r.d[1] = my + mouse_disp_top;
 			Execute68k(proc, &r);
 #else
-			WriteMacInt16(0x82a, mx);
-			WriteMacInt16(0x828, my);
-			WriteMacInt16(0x82e, mx);
-			WriteMacInt16(0x82c, my);
+			// The video implementation has already validated that the coordinates are in range for the display;
+			// We just apply the display offset here.
+			WriteMacInt16(0x82a, mx + mouse_disp_left);
+			WriteMacInt16(0x828, my + mouse_disp_top);
+			WriteMacInt16(0x82e, mx + mouse_disp_left);
+			WriteMacInt16(0x82c, my + mouse_disp_top);
 			WriteMacInt8(0x8ce, ReadMacInt8(0x8cf));	// CrsrCouple -> CrsrNew
 #endif
 			old_mouse_x = mx;
