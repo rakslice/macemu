@@ -724,7 +724,6 @@ static int16 VideoStatus(uint32 pb)
 
 int16 monitor_desc::video_status(uint32 pb)
 {
-	//uint8 slot_id = ReadMacInt8(dce + dCtlSlotId);
 	int16 code = ReadMacInt16(pb + csCode);
 	D(bug("VideoStatus(%d) %d: ", refNum, code));
 	uint32 param = ReadMacInt32(pb + csParam);
