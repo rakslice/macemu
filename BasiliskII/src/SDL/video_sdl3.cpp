@@ -2843,7 +2843,8 @@ static void handle_events(void)
 					static bool prev_clipped = false;
 
 					// clip events to the actual window
-					if (event.motion.x >= 0 && event.motion.x < sdi->drv()->VIDEO_MODE_X &&
+					if (sdi && sdi->drv() && sdi->drv()->init_ok &&
+						event.motion.x >= 0 && event.motion.x < sdi->drv()->VIDEO_MODE_X &&
 						event.motion.y >= 0 && event.motion.y < sdi->drv()->VIDEO_MODE_Y) {
 
 							sdi->drv()->mouse_moved(event.motion.x, event.motion.y);
