@@ -76,9 +76,7 @@
 #define CODE_INVALID -1
 #define CODE_HOTKEY  -2
 
-// Supported video modes
 using std::vector;
-static vector<VIDEO_MODE> VideoModes;
 
 // Display types
 #ifdef SHEEPSHAVER
@@ -413,29 +411,6 @@ static LRESULT CALLBACK windows_message_handler(HWND hwnd, UINT msg, WPARAM wPar
  */
 
 #ifdef SHEEPSHAVER
-#if 0
-// Color depth modes type
-typedef int video_depth;
-
-// 1, 2, 4 and 8 bit depths use a color palette
-static inline bool IsDirectMode(VIDEO_MODE const & mode)
-{
-	return IsDirectMode(mode.viAppleMode);
-}
-
-// Abstract base class representing one (possibly virtual) monitor
-// ("monitor" = rectangular display with a contiguous frame buffer)
-class monitor_desc {
-public:
-	monitor_desc(const vector<VIDEO_MODE> &available_modes, video_depth default_depth, uint32 default_id) {}
-	virtual ~monitor_desc() {}
-
-};
-
-// Vector of pointers to available monitor descriptions, filled by VideoInit()
-static vector<monitor_desc *> VideoMonitors;
-
-#endif
 
 // Find Apple mode matching best specified dimensions
 static int find_apple_resolution(int xsize, int ysize)
@@ -563,14 +538,13 @@ static int display_num_for_id(SDL_DisplayID displayID) {
 }
 
 // Get screen dimensions
-static void sdl_display_dimensions(int &width, int &height)
+static void sdl_display_dimensions(int display_num, int &width, int &height)
 {
 	SDL_Rect rect = { 0 };
 
 	SDL_DisplayID displayID;
 
-	int display_num = PrefsFindInt32("display_num");
-	// For the purposes of this pref, displays start from 1
+	// For the purposes of display_num values from prefs, displays start from 1
 
 	if (display_num < 1) {
 		displayID = SDL_GetPrimaryDisplay();
@@ -588,25 +562,25 @@ static void sdl_display_dimensions(int &width, int &height)
 	height = rect.h;
 }
 
-static inline int sdl_display_width(void)
+static inline int sdl_display_width(int display_num)
 {
 	int width, height;
-	sdl_display_dimensions(width, height);
+	sdl_display_dimensions(display_num, width, height);
 	return width;
 }
 
-static inline int sdl_display_height(void)
+static inline int sdl_display_height(int display_num)
 {
 	int width, height;
-	sdl_display_dimensions(width, height);
+	sdl_display_dimensions(display_num, width, height);
 	return height;
 }
 
 // Check whether specified mode is available
-static bool has_mode(int type, int width, int height, int depth)
+static bool has_mode(int display_num, int type, int width, int height, int depth)
 {
 	// Filter out out-of-bounds resolutions
-	if (width > sdl_display_width() || height > sdl_display_height())
+	if (width > sdl_display_width(display_num) || height > sdl_display_height(display_num))
 		return false;
 
 	// Whatever size it is, beyond what we've checked, we'll scale to/from as appropriate.
@@ -614,10 +588,10 @@ static bool has_mode(int type, int width, int height, int depth)
 }
 
 // Add mode to list of supported modes
-static void add_mode(int type, int width, int height, int resolution_id, int bytes_per_row, int depth)
+static void add_mode(vector<VIDEO_MODE> & VideoModes, int display_num, int type, int width, int height, int resolution_id, int bytes_per_row, int depth)
 {
 	// Filter out unsupported modes
-	if (!has_mode(type, width, height, depth))
+	if (!has_mode(display_num, type, width, height, depth))
 		return;
 
 	// Fill in VideoMode entry
@@ -878,15 +852,26 @@ SDL_Surface * SDLDisplayInstance::init_sdl_video(int width, int height, int dept
 	int window_width = width * m;
 	int window_height = height * m;
 
-	if (want_fullscreen) {
-		window_width = sdl_display_width();
-		window_height = sdl_display_height();
-	}
-
 	SDL_DisplayID old_window_display_id = 0;
-	
 	if (sdl_window) {
 		old_window_display_id = SDL_GetDisplayForWindow(sdl_window);
+	}
+
+	int display_num = drv()->monitor.get_display_num_pref();
+	D(bug("configured display num %d\n", display_num));
+	// For the purposes of this pref, displays start from 1
+
+	if ((display_num < 1) && (old_window_display_id != 0)) {
+		// prefs display is unspecified but keep the window on the display it's on
+		display_num = display_num_for_id(old_window_display_id);
+	}
+
+	if (want_fullscreen) {
+		window_width = sdl_display_width(display_num);
+		window_height = sdl_display_height(display_num);
+	}
+
+	if (sdl_window) {
 		int old_window_width, old_window_height, old_window_flags;
 		SDL_GetWindowSize(sdl_window, &old_window_width, &old_window_height);
 		old_window_flags = SDL_GetWindowFlags(sdl_window);
@@ -916,15 +901,6 @@ SDL_Surface * SDLDisplayInstance::init_sdl_video(int width, int height, int dept
 			SDL_SetHint("SDL_MOUSE_FOCUS_CLICKTHROUGH", "1");
 		}
 #endif
-
-		int display_num = drv()->monitor.get_display_num_pref();
-		D(bug("display_num %d\n", display_num));
-		// For the purposes of this pref, displays start from 1
-
-		if ((display_num < 1) && (old_window_display_id != 0)) {
-			// prefs display is unspecified but keep the window on the display it's on
-			display_num = display_num_for_id(old_window_display_id);
-		}
 
 		int x, y;
 		if (display_num < 1) {
@@ -1716,6 +1692,20 @@ bool SDLDisplayInstance::start_redraw()
 	return true;
 }
 
+static void apply_max_display_dimensions(int display_num, int & default_width, int & default_height)
+{
+	int max_width, max_height;
+	sdl_display_dimensions(display_num, max_width, max_height);
+	if (default_width <= 0)
+		default_width = max_width;
+	else if (default_width > max_width)
+		default_width = max_width;
+	if (default_height <= 0)
+		default_height = max_height;
+	else if (default_height > max_height)
+		default_height = max_height;
+}
+
 
 #ifdef SHEEPSHAVER
 bool VideoInit(void)
@@ -1781,175 +1771,160 @@ bool VideoInit(bool classic)
 		}
 #endif
 	}
-	if (default_width <= 0)
-		default_width = sdl_display_width();
-	else if (default_width > sdl_display_width())
-		default_width = sdl_display_width();
-	if (default_height <= 0)
-		default_height = sdl_display_height();
-	else if (default_height > sdl_display_height())
-		default_height = sdl_display_height();
-
-	// Mac screen depth follows X depth
-	int screen_depth = 32;
-	const SDL_DisplayMode *desktop_mode = SDL_GetDesktopDisplayMode(0);
-	if (desktop_mode != NULL) {
-		screen_depth = SDL_BITSPERPIXEL(desktop_mode->format);
-	}
-	int default_depth;
-	switch (screen_depth) {
-	case 8:
-		default_depth = VIDEO_DEPTH_8BIT;
-		break;
-	case 15: case 16:
-		default_depth = VIDEO_DEPTH_16BIT;
-		break;
-	case 24: case 32:
-		default_depth = VIDEO_DEPTH_32BIT;
-		break;
-	default:
-		default_depth =  VIDEO_DEPTH_1BIT;
-		break;
-	}
 
 	// Initialize list of video modes to try
 	struct {
 		int w;
 		int h;
-		int resolution_id;
 	}
 #ifdef SHEEPSHAVER
 	// Omit Classic resolutions
 	video_modes[] = {
-		{   -1,   -1, 0x80 },
-		{  640,  480, 0x81 },
-		{  800,  600, 0x82 },
-		{ 1024,  768, 0x83 },
-		{ 1152,  870, 0x84 },
-		{ 1280, 1024, 0x85 },
-		{ 1600, 1200, 0x86 },
+		{  640,  480 },
+		{  800,  600 },
+		{ 1024,  768 },
+		{ 1152,  870 },
+		{ 1280, 1024 },
+		{ 1600, 1200 },
 		{ 0, }
 	};
 #else
 	video_modes[] = {
-		{   -1,   -1, 0x80 },
-		{  512,  384, 0x80 },
-		{  640,  480, 0x81 },
-		{  800,  600, 0x82 },
-		{ 1024,  768, 0x83 },
-		{ 1152,  870, 0x84 },
-		{ 1280, 1024, 0x85 },
-		{ 1600, 1200, 0x86 },
+		{  512,  384 },
+		{  640,  480 },
+		{  800,  600 },
+		{ 1024,  768 },
+		{ 1152,  870 },
+		{ 1280, 1024 },
+		{ 1600, 1200 },
 		{ 0, }
 	};
 #endif
-	video_modes[0].w = default_width;
-	video_modes[0].h = default_height;
 
-	// Construct list of supported modes
-	if (display_type == DISPLAY_WINDOW) {
-		if (classic)
-			add_mode(display_type, 512, 342, 0x80, 64, VIDEO_DEPTH_1BIT);
-		else {
+	vector<int> displays;
+	displays.push_back(PrefsFindInt32("display_num"));
+
+	int add_display = PrefsFindInt32("add_display");
+	if (add_display > 0) {
+		displays.push_back(add_display);
+	}
+
+	bool ret = true;
+
+	int monitor_desc_num = 0;
+	for (vector<int>::iterator display_i = displays.begin(); display_i != displays.end(); display_i++) {
+		int display_num = *display_i;
+
+		vector<VIDEO_MODE> VideoModes;
+		int default_depth;
+		uint32 default_id;
+		int color_depth;
+
+
+		// Mac screen depth follows X depth
+		int screen_depth = 32;
+		const SDL_DisplayMode *desktop_mode = SDL_GetDesktopDisplayMode(display_num);
+		if (desktop_mode != NULL) {
+			screen_depth = SDL_BITSPERPIXEL(desktop_mode->format);
+		}
+		switch (screen_depth) {
+		case 8:
+			default_depth = VIDEO_DEPTH_8BIT;
+			break;
+		case 15: case 16:
+			default_depth = VIDEO_DEPTH_16BIT;
+			break;
+		case 24: case 32:
+			default_depth = VIDEO_DEPTH_32BIT;
+			break;
+		default:
+			default_depth =  VIDEO_DEPTH_1BIT;
+			break;
+		}
+
+		int cur_width = default_width;
+		int cur_height = default_height;
+		apply_max_display_dimensions(display_num, cur_width, cur_height);
+
+		// Construct list of supported modes
+		if ((display_type == DISPLAY_WINDOW) && classic) {
+			add_mode(VideoModes, display_num, display_type, 512, 342, 0x80, 64, VIDEO_DEPTH_1BIT);
+		} else {
+			int next_resolution_id = 0x80;
+
+
+			int resolution_id = next_resolution_id++;
+			for (int d = VIDEO_DEPTH_1BIT; d <= default_depth; d++)
+				add_mode(VideoModes, display_num, display_type, cur_width, cur_height, resolution_id, TrivialBytesPerRow(cur_width, (video_depth)d), d);
+
 			for (int i = 0; video_modes[i].w != 0; i++) {
 				const int w = video_modes[i].w;
 				const int h = video_modes[i].h;
-				if (i > 0 && (w >= default_width || h >= default_height))
+				if (i > 0 && (w >= cur_width || h >= cur_height))
 					continue;
+				resolution_id = next_resolution_id++;
 				for (int d = VIDEO_DEPTH_1BIT; d <= default_depth; d++)
-					add_mode(display_type, w, h, video_modes[i].resolution_id, TrivialBytesPerRow(w, (video_depth)d), d);
+					add_mode(VideoModes, display_num, display_type, w, h, resolution_id, TrivialBytesPerRow(w, (video_depth)d), d);
 			}
 		}
-	} else if (display_type == DISPLAY_SCREEN || display_type == DISPLAY_CHROMAKEY) {
-		for (int i = 0; video_modes[i].w != 0; i++) {
-			const int w = video_modes[i].w;
-			const int h = video_modes[i].h;
-			if (i > 0 && (w >= default_width || h >= default_height))
-				continue;
-			for (int d = VIDEO_DEPTH_1BIT; d <= default_depth; d++)
-				add_mode(display_type, w, h, video_modes[i].resolution_id, TrivialBytesPerRow(w, (video_depth)d), d);
+
+		if (VideoModes.empty()) {
+			ErrorAlert(STR_NO_XVISUAL_ERR);
+			return false;
 		}
-	}
 
-	if (VideoModes.empty()) {
-		ErrorAlert(STR_NO_XVISUAL_ERR);
-		return false;
-	}
-
-	// Find requested default mode with specified dimensions
-	uint32 default_id;
-	std::vector<VIDEO_MODE>::const_iterator i, end = VideoModes.end();
-	for (i = VideoModes.begin(); i != end; ++i) {
-		const VIDEO_MODE & mode = (*i);
-		if (VIDEO_MODE_X == default_width && VIDEO_MODE_Y == default_height && VIDEO_MODE_DEPTH == default_depth) {
+		// Find requested default mode with specified dimensions
+		std::vector<VIDEO_MODE>::const_iterator i, end = VideoModes.end();
+		for (i = VideoModes.begin(); i != end; ++i) {
+			const VIDEO_MODE & mode = (*i);
+			if (VIDEO_MODE_X == cur_width && VIDEO_MODE_Y == cur_height && VIDEO_MODE_DEPTH == default_depth) {
+				default_id = VIDEO_MODE_RESOLUTION;
+				break;
+			}
+		}
+		if (i == end) { // not found, use first available mode
+			const VIDEO_MODE & mode = VideoModes[0];
+			default_depth = VIDEO_MODE_DEPTH;
 			default_id = VIDEO_MODE_RESOLUTION;
-			break;
 		}
-	}
-	if (i == end) { // not found, use first available mode
-		const VIDEO_MODE & mode = VideoModes[0];
-		default_depth = VIDEO_MODE_DEPTH;
-		default_id = VIDEO_MODE_RESOLUTION;
-	}
 
-#ifdef SHEEPSHAVER
-	for (int i = 0; i < VideoModes.size(); i++)
-		VModes[i] = VideoModes[i];
-	VideoInfo *p = &VModes[VideoModes.size()];
-	p->viType = DIS_INVALID;        // End marker
-	p->viRowBytes = 0;
-	p->viXsize = p->viYsize = 0;
-	p->viAppleMode = 0;
-	p->viAppleID = 0;
-#endif
-
-#if DEBUG
-	D(bug("Available video modes:\n"));
-	for (i = VideoModes.begin(); i != end; ++i) {
-		const VIDEO_MODE & mode = (*i);
-		int bits = 1 << VIDEO_MODE_DEPTH;
-		if (bits == 16)
-			bits = 15;
-		else if (bits == 32)
-			bits = 24;
-		D(bug(" %dx%d (ID %02x), %d colors\n", VIDEO_MODE_X, VIDEO_MODE_Y, VIDEO_MODE_RESOLUTION, 1 << bits));
-	}
-#endif
-
-	int color_depth = get_customized_color_depth(default_depth);
-
-	D(bug("Return get_customized_color_depth %d\n", color_depth));
-
-	// Create SDL_monitor_desc for this (the only) display
-	SDL_monitor_desc *monitor = new SDL_monitor_desc(VideoModes, (video_depth)color_depth, default_id, 0);
-	if (!monitor->sdl_display.init_locks()) return false;
-	monitor->sdl_display.set_display_type(display_type);
-	VideoMonitors.push_back(monitor);
-
-	// Open display
-	bool ret = monitor->video_open();
-
-	if (ret) {
-		int second_display_num = PrefsFindInt32("add_display");
-		if (second_display_num >= 1) {
-			monitor = new SDL_monitor_desc(VideoModes, (video_depth)color_depth, default_id, 1);
-			if (monitor) {
-				monitor->sdl_display.set_display_type(display_type);
-				ret = monitor->sdl_display.init_locks();
-				if (ret) {
-					VideoMonitors.push_back(monitor);
-
-					ret = monitor->video_open();
-				}
-			} else {
-				ret = false;
-			}
-			if (!ret) {
-				monitor = (SDL_monitor_desc *)*(VideoMonitors.begin());
-				monitor->video_close();
-				monitor->sdl_display.destroy_locks();
-			}
+	#if DEBUG
+		D(bug("Available video modes:\n"));
+		for (i = VideoModes.begin(); i != end; ++i) {
+			const VIDEO_MODE & mode = (*i);
+			int bits = 1 << VIDEO_MODE_DEPTH;
+			if (bits == 16)
+				bits = 15;
+			else if (bits == 32)
+				bits = 24;
+			D(bug(" %dx%d (ID %02x), %d colors\n", VIDEO_MODE_X, VIDEO_MODE_Y, VIDEO_MODE_RESOLUTION, 1 << bits));
 		}
+	#endif
+
+		color_depth = get_customized_color_depth(default_depth);
+
+		D(bug("Return get_customized_color_depth %d\n", color_depth));
+
+		// Create SDL_monitor_desc for this (the only) display
+		SDL_monitor_desc *monitor = new SDL_monitor_desc(VideoModes, (video_depth)color_depth, default_id, monitor_desc_num++);
+		if (!monitor) {	ret = false; break;	}
+		if (!monitor->sdl_display.init_locks()) { delete monitor; ret = false; break; }
+		monitor->sdl_display.set_display_type(display_type);
+		VideoMonitors.push_back(monitor);
+
+		// Open display
+		ret = monitor->video_open();
+		if (!ret) break;
+	}
+
+	if (!ret) {
+		for (auto i = VideoMonitors.begin(); i != VideoMonitors.end(); i++) {
+			SDL_monitor_desc *monitor = static_cast<SDL_monitor_desc *>(*(i));
+			monitor->video_close();
+			monitor->sdl_display.destroy_locks();
+			delete monitor;
+		}
+		VideoMonitors.clear();
 	}
 
 	return ret;
@@ -2390,9 +2365,8 @@ int16 video_mode_change(monitor_desc * monitor, VidLocals *csSave, uint32 ParamP
 	    (csSave->saveMode == ReadMacInt16(ParamPtr + csMode))) return noErr;
 
 	/* first find video mode in table */
-	for (int i=0; VModes[i].viType != DIS_INVALID; i++) {
-		if ((ReadMacInt16(ParamPtr + csMode) == VModes[i].viAppleMode) &&
-		    (ReadMacInt32(ParamPtr + csData) == VModes[i].viAppleID)) {
+	int i = monitor->find_mode(ReadMacInt16(ParamPtr + csMode), ReadMacInt32(ParamPtr + csData));
+	if (i >= 0) {
 			csSave->saveMode = ReadMacInt16(ParamPtr + csMode);
 			csSave->saveData = ReadMacInt32(ParamPtr + csData);
 			csSave->savePage = ReadMacInt16(ParamPtr + csPage);
@@ -2415,7 +2389,6 @@ int16 video_mode_change(monitor_desc * monitor, VidLocals *csSave, uint32 ParamP
 			sdm->sdl_display.resume_redraw();
 			EnableInterrupt();
 			return noErr;
-		}
 	}
 	return paramErr;
 }

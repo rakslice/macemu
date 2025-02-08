@@ -50,14 +50,6 @@ uint8 MacCursor[68] = {16, 1};	// Mac cursor image
 
 bool keyfile_valid;		// Flag: Keyfile is valid, enable full-screen modes
 
-
-/*
- *  Video mode information (constructed by VideoInit())
- */
-
-struct VideoInfo VModes[64];
-
-
 /*
  *  Driver local variables
  */
@@ -161,9 +153,9 @@ bool monitor_desc::VideoSnapshot(int xsize, int ysize, uint8 *p)
 {
 	if (display_type == DIS_WINDOW) {
 		uint8 *screen = (uint8 *)csSave->saveBaseAddr;
-		uint32 row_bytes = VModes[cur_mode].viRowBytes;	
-		uint32 y2size = VModes[cur_mode].viYsize;
-		uint32 x2size = VModes[cur_mode].viXsize;
+		uint32 row_bytes = modes[cur_mode].viRowBytes;
+		uint32 y2size = modes[cur_mode].viYsize;
+		uint32 x2size = modes[cur_mode].viXsize;
 		for (int j=0;j<ysize;j++) {
 			for (int i=0;i<xsize;i++) {
 				*p++ = mac_pal[screen[uint32(float(j)*float(y2size)/float(ysize))*row_bytes+uint32(float(i)*float(x2size)/float(xsize))]].red;
@@ -210,8 +202,8 @@ int16 monitor_desc::video_open(uint32 pb)
 
 	// Set up VidLocals
 	csSave->saveBaseAddr = screen_base;
-	csSave->saveData = VModes[cur_mode].viAppleID;// First mode ...
-	csSave->saveMode = VModes[cur_mode].viAppleMode;
+	csSave->saveData = modes[cur_mode].viAppleID;// First mode ...
+	csSave->saveMode = modes[cur_mode].viAppleMode;
 	csSave->savePage = 0;
 	csSave->saveVidParms = 0;			// Add the right table
 	csSave->luminanceMapping = false;
@@ -384,7 +376,7 @@ int16 monitor_desc::video_control(uint32 pb)
 
 		case cscSetEntries: {							// SetEntries
 			D(bug("SetEntries\n"));					
-			if (VModes[cur_mode].viAppleMode > APPLE_8_BIT) return controlErr;
+			if (modes[cur_mode].viAppleMode > APPLE_8_BIT) return controlErr;
 			uint32 s_pal = ReadMacInt32(param + csTable);
 			uint16 start = ReadMacInt16(param + csStart);
 			uint16 count = ReadMacInt16(param + csCount);
@@ -483,15 +475,15 @@ int16 monitor_desc::video_control(uint32 pb)
 				0xffffffff		// 32 bpp
 			};
 			uint32 p = csSave->saveBaseAddr;
-			uint32 pat = pattern[VModes[cur_mode].viAppleMode - APPLE_1_BIT];
-			bool invert = (VModes[cur_mode].viAppleMode == APPLE_32_BIT);
-			for (uint32 y=0; y<VModes[cur_mode].viYsize; y++) {
-				for (uint32 x=0; x<VModes[cur_mode].viRowBytes; x+=4) {
+			uint32 pat = pattern[modes[cur_mode].viAppleMode - APPLE_1_BIT];
+			bool invert = (modes[cur_mode].viAppleMode == APPLE_32_BIT);
+			for (uint32 y=0; y<modes[cur_mode].viYsize; y++) {
+				for (uint32 x=0; x<modes[cur_mode].viRowBytes; x+=4) {
 					WriteMacInt32(p + x, pat);
 					if (invert)
 						pat = ~pat;
 				}
-				p += VModes[cur_mode].viRowBytes;
+				p += modes[cur_mode].viRowBytes;
 				pat = ~pat;
 			}
 			return noErr;
@@ -677,41 +669,38 @@ int16 monitor_desc::video_control(uint32 pb)
  */
 
 // Search for given AppleID in mode table
-static bool has_mode(uint32 id)
+bool monitor_desc::has_mode(uint32 id) const
 {
-	VideoInfo *p = VModes;
-	while (p->viType != DIS_INVALID) {
+	for (vector<VideoInfo>::const_iterator p = modes.begin(); p != modes.end(); p++)
+	{
 		if (p->viAppleID == id)
 			return true;
-		p++;
 	}
 	return false;
 }
 
 // Find maximum depth for given AppleID
-static uint32 max_depth(uint32 id)
+uint32 monitor_desc::max_depth(uint32 id) const
 {
 	uint32 max = APPLE_1_BIT;
-	VideoInfo *p = VModes;
-	while (p->viType != DIS_INVALID) {
+	for (vector<VideoInfo>::const_iterator p = modes.begin(); p != modes.end(); p++)
+	{
 		if (p->viAppleID == id && p->viAppleMode > max)
 			max = p->viAppleMode;
-		p++;
 	}
 	return max;
 }
 
 // Get X/Y size of specified resolution
-static void get_size_of_resolution(int id, uint32 &x, uint32 &y)
+void monitor_desc::get_size_of_resolution(int id, uint32 &x, uint32 &y) const
 {
-	VideoInfo *p = VModes;
-	while (p->viType != DIS_INVALID) {
+	for (vector<VideoInfo>::const_iterator p = modes.begin(); p != modes.end(); p++)
+	{
 		if (p->viAppleID == id) {
 			x = p->viXsize;
 			y = p->viYsize;
 			return;
 		}
-		p++;
 	}
 	x = y = 0;
 }
@@ -751,8 +740,8 @@ int16 monitor_desc::video_status(uint32 pb)
 			uint16 start = ReadMacInt16(param + csStart);
 			uint16 count = ReadMacInt16(param + csCount);
 			rgb_color *s_pal;
-			if ((VModes[cur_mode].viAppleMode == APPLE_32_BIT)||
-				(VModes[cur_mode].viAppleMode == APPLE_16_BIT)) {
+			if ((modes[cur_mode].viAppleMode == APPLE_32_BIT)||
+				(modes[cur_mode].viAppleMode == APPLE_16_BIT)) {
 				D(bug("ERROR: GetEntries in direct mode \n"));
 				return statusErr;
 			}
@@ -937,23 +926,23 @@ int16 monitor_desc::video_status(uint32 pb)
 				ReadMacInt16(param + csDepthMode)));
 
 			// find right video mode						
-			for (int i=0; VModes[i].viType!=DIS_INVALID; i++) {
-				if ((ReadMacInt16(param + csDepthMode) == VModes[i].viAppleMode) &&
-					(ReadMacInt32(param + csDisplayModeID) == VModes[i].viAppleID)) {
+			for (int i=0; modes[i].viType!=DIS_INVALID; i++) {
+				if ((ReadMacInt16(param + csDepthMode) == modes[i].viAppleMode) &&
+					(ReadMacInt32(param + csDisplayModeID) == modes[i].viAppleID)) {
 					uint32 vpb = ReadMacInt32(param + csVPBlockPtr);
 					WriteMacInt32(vpb + vpBaseOffset, 0);
-					WriteMacInt16(vpb + vpRowBytes, VModes[i].viRowBytes);
+					WriteMacInt16(vpb + vpRowBytes, modes[i].viRowBytes);
 					WriteMacInt16(vpb + vpBounds, 0);
 					WriteMacInt16(vpb + vpBounds + 2, 0);
-					WriteMacInt16(vpb + vpBounds + 4, VModes[i].viYsize);
-					WriteMacInt16(vpb + vpBounds + 6, VModes[i].viXsize);
+					WriteMacInt16(vpb + vpBounds + 4, modes[i].viYsize);
+					WriteMacInt16(vpb + vpBounds + 6, modes[i].viXsize);
 					WriteMacInt16(vpb + vpVersion, 0);		// Pixel Map version number
 					WriteMacInt16(vpb + vpPackType, 0);
 					WriteMacInt32(vpb + vpPackSize, 0);
 					WriteMacInt32(vpb + vpPlaneBytes, 0);
 					WriteMacInt32(vpb + vpHRes, 0x00480000);	// horiz res of the device (ppi)
 					WriteMacInt32(vpb + vpVRes, 0x00480000);	// vert res of the device (ppi)
-					switch (VModes[i].viAppleMode) {
+					switch (modes[i].viAppleMode) {
 						case APPLE_1_BIT:
 							WriteMacInt16(vpb + vpPixelType, 0); 
 							WriteMacInt16(vpb + vpPixelSize, 1);
@@ -1007,11 +996,11 @@ int16 monitor_desc::video_status(uint32 pb)
 			D(bug("GetModeTiming mode %08lx\n", ReadMacInt32(param + csTimingMode)));
 			WriteMacInt32(param + csTimingFormat, kDeclROMtables);
 			WriteMacInt32(param + csTimingFlags, (1<<kModeValid)|(1<<kModeSafe)|(1<<kShowModeNow));		// Mode valid, safe, default and shown in Monitors panel
-			for (int i=0; VModes[i].viType!=DIS_INVALID; i++) {
-				if (ReadMacInt32(param + csTimingMode) == VModes[i].viAppleID) {
+			for (int i=0; modes[i].viType!=DIS_INVALID; i++) {
+				if (ReadMacInt32(param + csTimingMode) == modes[i].viAppleID) {
 					uint32 timing = timingUnknown;
 					uint32 flags = (1<<kModeValid) | (1<<kShowModeNow);
-					switch (VModes[i].viAppleID) {
+					switch (modes[i].viAppleID) {
 						case APPLE_640x480:
 							timing = timingVESA_640x480_75hz;
 							flags |= (1<<kModeSafe);

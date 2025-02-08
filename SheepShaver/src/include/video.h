@@ -42,8 +42,6 @@ struct VideoInfo {
 	uint32 viAppleID;		// Screen DisplayID
 };
 
-extern struct VideoInfo VModes[];	// List of available video modes
-
 enum {	// viAppleMode
 	APPLE_1_BIT = 0x80,
 	APPLE_2_BIT,
@@ -199,7 +197,18 @@ public:
 	void set_mac_frame_base(uint32 base) {screen_base = base;}
 
 	// Get current video mode
-	const VideoInfo &get_current_mode(void) const {return VModes[cur_mode];}
+	const VideoInfo &get_current_mode(void) const {return modes[cur_mode];}
+
+	// Look for a matching video mode, or -1 if not found
+	int find_mode(uint32 appleMode, uint32 appleID) {
+		int count = 0;
+		for (vector<VideoInfo>::iterator i = modes.begin(); i != modes.end(); i++) {
+			if (i->viAppleMode == appleMode && i->viAppleID == appleID)
+				return count;
+			count++;
+		}
+		return -1;
+	}
 
 	// Called by the video driver to switch the video mode on this display
 	// (must call set_mac_frame_base())
@@ -211,13 +220,17 @@ public:
 	// Called by the video driver to set the gamma table
 	virtual void set_gamma(uint8 *gamma, int num) = 0;
 
+	bool has_mode(uint32 id) const;
+	uint32 max_depth(uint32 id) const;
+	void get_size_of_resolution(int id, uint32 &x, uint32 &y) const;
+
 protected:
 	vector<VideoInfo> modes;                         // List of supported video modes
 	int16 refNum;		// Driver reference number
 	VidLocals *csSave;	// Pointer to driver local variables
 
 	uint32 screen_base = 0;				// Frame buffer base address
-	int cur_mode;						// Number of current video mode (index in VModes array)
+	int cur_mode;						// Number of current video mode (index in modes vector)
 	int display_type = DIS_INVALID;		// Current display type
 };
 
