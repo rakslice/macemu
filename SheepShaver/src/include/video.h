@@ -102,8 +102,7 @@ enum {	// viAppleID
 	APPLE_1280x1024,
 	APPLE_1600x1200,
 	APPLE_CUSTOM,
-	APPLE_ID_MIN = APPLE_640x480,
-	APPLE_ID_MAX = APPLE_CUSTOM
+	APPLE_ID_MIN = APPLE_640x480
 };
 
 enum {	// Display type
@@ -232,6 +231,7 @@ protected:
 	uint32 screen_base = 0;				// Frame buffer base address
 	int cur_mode;						// Number of current video mode (index in modes vector)
 	int display_type = DIS_INVALID;		// Current display type
+	uint32 max_custom_id = APPLE_CUSTOM;
 };
 
 // Vector of pointers to available monitor descriptions, filled by VideoInit()

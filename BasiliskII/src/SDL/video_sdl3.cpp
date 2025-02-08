@@ -588,7 +588,7 @@ static bool has_mode(int display_num, int type, int width, int height, int depth
 }
 
 // Add mode to list of supported modes
-static void add_mode(vector<VIDEO_MODE> & VideoModes, int display_num, int type, int width, int height, int resolution_id, int bytes_per_row, int depth)
+static void add_mode(vector<VIDEO_MODE> & VideoModes, int display_num, int type, int width, int height, int resolution_id, int bytes_per_row, int depth, int custom_id = 0)
 {
 	// Filter out unsupported modes
 	if (!has_mode(display_num, type, width, height, depth))
@@ -598,6 +598,8 @@ static void add_mode(vector<VIDEO_MODE> & VideoModes, int display_num, int type,
 	VIDEO_MODE mode;
 #ifdef SHEEPSHAVER
 	resolution_id = find_apple_resolution(width, height);
+	if (resolution_id == APPLE_CUSTOM && custom_id != 0)
+		resolution_id = custom_id;
 	mode.viType = type;
 #endif
 	VIDEO_MODE_X = width;
@@ -1850,13 +1852,36 @@ bool VideoInit(bool classic)
 		if ((display_type == DISPLAY_WINDOW) && classic) {
 			add_mode(VideoModes, display_num, display_type, 512, 342, 0x80, 64, VIDEO_DEPTH_1BIT);
 		} else {
+			int custom_id = 0;
 			int next_resolution_id = 0x80;
+#ifdef SHEEPSHAVER
+			int next_custom_id = APPLE_CUSTOM;
+#endif
 
-
+			// mode specified in screen pref (or for default, based on display size)
 			int resolution_id = next_resolution_id++;
+#ifdef SHEEPSHAVER
+			custom_id = next_custom_id++;
+#endif
 			for (int d = VIDEO_DEPTH_1BIT; d <= default_depth; d++)
-				add_mode(VideoModes, display_num, display_type, cur_width, cur_height, resolution_id, TrivialBytesPerRow(cur_width, (video_depth)d), d);
+				add_mode(VideoModes, display_num, display_type, cur_width, cur_height, resolution_id, TrivialBytesPerRow(cur_width, (video_depth)d), d, custom_id);
 
+			// additional modes specified in add_mode prefs
+			int add_mode_index = 0;
+			const char *add_mode_str;
+			while ((add_mode_str = PrefsFindString("add_mode", add_mode_index++)) != NULL) {
+				int w, h;
+				if (sscanf(add_mode_str, "%d/%d", &w, &h) == 2) {
+					resolution_id = next_resolution_id++;
+#ifdef SHEEPSHAVER
+					custom_id = next_custom_id++;
+#endif
+					for (int d = VIDEO_DEPTH_1BIT; d <= default_depth; d++)
+						add_mode(VideoModes, display_num, display_type, w, h, resolution_id, TrivialBytesPerRow(w, (video_depth)d), d, custom_id);
+				}
+			}
+
+			// modes based on video_modes[] table above
 			for (int i = 0; video_modes[i].w != 0; i++) {
 				const int w = video_modes[i].w;
 				const int h = video_modes[i].h;

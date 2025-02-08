@@ -76,6 +76,12 @@ static monitor_desc *find_monitor(int16 refNum)
 
 
 monitor_desc::monitor_desc(const vector<VideoInfo> &available_modes, video_depth default_depth, uint32 default_id) : modes(available_modes), refNum(0), csSave(NULL) {
+	// Figure out largest mode value
+	for (int i = 0; i < modes.size(); i++) {
+		uint32 id = modes[i].viAppleID;
+		if (max_custom_id < id)
+			max_custom_id = id;
+	}
 
 	D(bug("looking for screen mode: depth %d id %d\n", default_depth, default_id));
 	// Set default mode
@@ -853,7 +859,7 @@ int16 monitor_desc::video_status(uint32 pb)
 					work_id++;
 					while (!has_mode(work_id)) {
 						work_id++;
-						if (work_id > APPLE_ID_MAX) {
+						if (work_id > max_custom_id) {
 							WriteMacInt32(param + csRIDisplayModeID, kDisplayModeIDNoMoreResolutions);
 							return noErr;
 						}
@@ -908,7 +914,7 @@ int16 monitor_desc::video_status(uint32 pb)
 					WriteMacInt32(param + csVerticalLines, 1200);
 					WriteMacInt32(param + csRefreshRate, 75<<16);
 					break;
-				case APPLE_CUSTOM: {
+				default: {
 					uint32 x, y;
 					get_size_of_resolution(work_id, x, y);
 					WriteMacInt32(param + csHorizontalPixels, x);

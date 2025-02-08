@@ -46,6 +46,7 @@ prefs_desc platform_prefs_items[] = {
 	{"display_num", TYPE_INT32, false,     "Display to use, starting from 1. 0=automatic"},
 	{"clone_to", TYPE_INT32, false,        "Display to show a second copy of the screen on, starting from 1. 0=off"},
 	{"add_display", TYPE_INT32, false,     "Display to show second monitor on, starting from 1. 0=off"},
+	{"add_mode", TYPE_STRING, true,        "Add a custom display mode, in the form width/height"},
 #endif
 	{NULL, TYPE_END, false, NULL} // End of list
 };
