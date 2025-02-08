@@ -2840,20 +2840,30 @@ static void handle_events(void)
 #endif
 					//D(bug("move: %d, %f,%f\n", event.motion.windowID, event.motion.x, event.motion.y));
 
+					// Some mouse motion events are for parts of the window outside of the monitor video,
+					// like the area of the letterbox in a letterboxed full screen mode.
+					//
+					// Clip the motion events we handle to the actual part of the window with monitor video
+					// This will limit the coordinates we send to the emulated mac to the range of the window
 					static bool prev_clipped = false;
+					static bool prev_cursor_visible;
 
-					// clip events to the actual window
 					if (sdi && sdi->drv() && sdi->drv()->init_ok &&
 						event.motion.x >= 0 && event.motion.x < sdi->drv()->VIDEO_MODE_X &&
 						event.motion.y >= 0 && event.motion.y < sdi->drv()->VIDEO_MODE_Y) {
-
+							// Cursor in range
 							sdi->drv()->mouse_moved(event.motion.x, event.motion.y);
 							if (prev_clipped) {
-								SDL_HideCursor();
+								// Turn the mouse cursor back off it was off before
+								if (!prev_cursor_visible)
+									SDL_HideCursor();
 								prev_clipped = false;
 							}
 					} else {
 						if (!prev_clipped) {
+							// Turn the host mouse cursor on so that the user can see it to move it
+							// across the letterbox
+							prev_cursor_visible = SDL_CursorVisible();
 							SDL_ShowCursor();
 							prev_clipped = true;
 						}
