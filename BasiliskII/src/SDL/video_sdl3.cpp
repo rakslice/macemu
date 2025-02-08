@@ -723,11 +723,7 @@ public:
 	void toggle_mouse_grab(void);
 	void mouse_moved(int x, int y) {
 		int display_num;
-	#ifdef SHEEPSHAVER
 		display_num = monitor.getRefNum();
-	#else
-		display_num = monitor.get_slot_id();
-	#endif
 		ADBMouseMoved(x, y, display_num);
 	}
 

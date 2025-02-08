@@ -152,6 +152,9 @@ public:
 	// Get Mac slot ID number
 	uint8 get_slot_id(void) const {return slot_id;}
 
+	int16 getRefNum() const { return refNum; }
+	void setRefNum(int16 newRefNum) { refNum = newRefNum; }
+
 	// Get current Mac frame buffer base address
 	uint32 get_mac_frame_base(void) const {return mac_frame_base;}
 
@@ -219,6 +222,7 @@ private:
 
 	uint8 slot_id;               // NuBus slot ID number
 	static uint8 next_slot_id;   // Next available slot ID
+	int16 refNum;                // Driver reference number
 
 	uint8 palette[256 * 3];      // Color palette, 256 entries, RGB
 

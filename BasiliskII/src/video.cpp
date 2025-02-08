@@ -87,12 +87,16 @@ static int palette_size(video_depth depth)
  *  Find pointer to monitor_desc for given slot ID (or NULL if not found)
  */
 
-static monitor_desc *find_monitor(uint8 id)
+static monitor_desc *find_monitor(uint8 id, int16 refNum)
 {
 	vector<monitor_desc *>::const_iterator i, end = VideoMonitors.end();
 	for (i = VideoMonitors.begin(); i != end; ++i) {
-		if ((*i)->get_slot_id() == id)
+		if ((*i)->get_slot_id() == id) {
+			if ((*i)->getRefNum() == 0)
+				bug("Assigning slot %d refNum %d\n", id, refNum);
+				(*i)->setRefNum(refNum);
 			return *i;
+		}
 	}
 	return NULL;
 }
@@ -106,6 +110,8 @@ monitor_desc::monitor_desc(const vector<video_mode> &available_modes, video_dept
 {
 	// Assign the next slot ID on construction
 	slot_id = next_slot_id++;
+
+	refNum = 0;
 
 	// Initialize Apple mode list
 	uint16 mode = 0x80;
@@ -487,9 +493,10 @@ int16 monitor_desc::driver_open(void)
 int16 VideoDriverOpen(uint32 pb, uint32 dce)
 {
 	uint8 slot_id = ReadMacInt8(dce + dCtlSlotId);
+	int16 refNum = (int16)ReadMacInt16(pb + ioRefNum);
 	D(bug("VideoDriverOpen slot %02x\n", slot_id));
 
-	monitor_desc *m = find_monitor(slot_id);
+	monitor_desc *m = find_monitor(slot_id, refNum);
 	if (m)
 		return m->driver_open();
 	else
@@ -698,9 +705,10 @@ int16 VideoDriverControl(uint32 pb, uint32 dce)
 	uint8 slot_id = ReadMacInt8(dce + dCtlSlotId);
 	uint16 code = ReadMacInt16(pb + csCode);
 	uint32 param = ReadMacInt32(pb + csParam);
+	int16 refNum = (int16)ReadMacInt16(pb + ioRefNum);
 	D(bug("VideoDriverControl slot %02x, code %d\n", slot_id, code));
 
-	monitor_desc *m = find_monitor(slot_id);
+	monitor_desc *m = find_monitor(slot_id, refNum);
 	if (m)
 		return m->driver_control(code, param, dce);
 	else
@@ -959,9 +967,10 @@ int16 VideoDriverStatus(uint32 pb, uint32 dce)
 	uint8 slot_id = ReadMacInt8(dce + dCtlSlotId);
 	uint16 code = ReadMacInt16(pb + csCode);
 	uint32 param = ReadMacInt32(pb + csParam);
+	int16 refNum = (int16)ReadMacInt16(pb + ioRefNum);
 	D(bug("VideoDriverStatus slot %02x, code %d\n", slot_id, code));
 
-	monitor_desc *m = find_monitor(slot_id);
+	monitor_desc *m = find_monitor(slot_id, refNum);
 	if (m)
 		return m->driver_status(code, param);
 	else
