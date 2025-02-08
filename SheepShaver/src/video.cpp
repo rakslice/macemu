@@ -85,12 +85,22 @@ static monitor_desc *find_monitor(int16 refNum)
 
 monitor_desc::monitor_desc(const vector<VideoInfo> &available_modes, video_depth default_depth, uint32 default_id) : modes(available_modes), refNum(0), csSave(NULL) {
 
+	D(bug("looking for screen mode: depth %d id %d\n", default_depth, default_id));
 	// Set default mode
+	bool found = false;
 	for (int i = 0; i < modes.size(); i++) {
-		if (modes[i].viAppleMode == default_id) {
+		D(bug("mode #%d viAppleID %d viAppleMode (depth) %d\n", i, modes[i].viAppleID, modes[i].viAppleMode));
+		if (modes[i].viAppleMode == default_depth && modes[i].viAppleID == default_id) {
+			// TODO is the last one the best match here
 			cur_mode = i;
-			break; // TODO is the first one the best match here
+			found = true;
+			D(bug("found, mode #%d\n", i));
+			break;
 		}
+	}
+	if (!found) {
+		D(bug("not found, using mode #0\n"));
+		cur_mode = 0;
 	}
 
 }
