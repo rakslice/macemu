@@ -140,7 +140,7 @@ void NQDMisc(uint32 arg1, uintptr arg2)
 
 
 // Prototypes
-static int16 set_vidlocals_gamma(VidLocals *csSave, uint32 gamma);
+static int16 set_vidlocals_gamma(monitor_desc * monitor, VidLocals *csSave, uint32 gamma);
 
 
 /*
@@ -227,7 +227,7 @@ int16 monitor_desc::video_open(uint32 pb)
 	// Find and set default gamma table
 	csSave->gammaTable = 0;
 	csSave->maxGammaTableSize = 0;
-	set_vidlocals_gamma(csSave, 0);
+	set_vidlocals_gamma(this, csSave, 0);
 
 	// Install and activate interrupt service
 	SheepVar32 theServiceID = 0;
@@ -263,7 +263,7 @@ static bool allocate_gamma_table(VidLocals *csSave, uint32 size)
 	 return a > b? a : b;
  }
 
-static int16 set_vidlocals_gamma(VidLocals *csSave, uint32 gamma)
+static int16 set_vidlocals_gamma(monitor_desc * monitor, VidLocals *csSave, uint32 gamma)
 {
 	if (gamma == 0) { // Build linear ramp, 256 entries
 
@@ -286,7 +286,7 @@ static int16 set_vidlocals_gamma(VidLocals *csSave, uint32 gamma)
 			WriteMacInt8(p + i, i);
 			mac_gamma[i].red = mac_gamma[i].green = mac_gamma[i].blue = i;
 		}
-		video_set_gamma(256);
+		video_set_gamma(monitor, 256);
 	} else { // User-supplied gamma table
 
 		// Validate header
@@ -343,7 +343,7 @@ static int16 set_vidlocals_gamma(VidLocals *csSave, uint32 gamma)
 				mac_gamma[i].blue = max_blue;
 			}
 		}
-		video_set_gamma(data_cnt);
+		video_set_gamma(monitor, data_cnt);
 	}
 	return noErr;
 }
@@ -459,14 +459,14 @@ int16 monitor_desc::video_control(uint32 pb)
 					s_pal += 8;
 				}
 			}
-			video_set_palette();
+			video_set_palette(this);
 			return noErr;
 		}
 
 		case cscSetGamma: {							// SetGamma
 			uint32 user_table = ReadMacInt32(param + csGTable);
 			D(bug("SetGamma %08x\n", user_table));
-			return set_vidlocals_gamma(csSave, user_table);
+			return set_vidlocals_gamma(this, csSave, user_table);
 		}
 
 		case cscGrayPage: {							// GrayPage

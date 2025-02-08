@@ -2119,7 +2119,7 @@ void SDLDisplayInstance::do_toggle_fullscreen(void)
 
 	// reset the palette
 #ifdef SHEEPSHAVER
-	video_set_palette();
+	video_set_palette(&drv()->monitor);
 #endif
 	ApplyGammaRamp();
 	drv()->update_palette();
@@ -2250,9 +2250,8 @@ void SDLDisplayInstance::interrupt_time() {
  */
 
 #ifdef SHEEPSHAVER
-void video_set_palette(void)
+void video_set_palette(monitor_desc * monitor)
 {
-	monitor_desc * monitor = VideoMonitors[0];
 	int n_colors = palette_size(monitor->get_current_mode().viAppleMode);
 	uint8 pal[256 * 3];
 	for (int c = 0; c < n_colors; c++) {
@@ -2263,9 +2262,8 @@ void video_set_palette(void)
 	monitor->set_palette(pal, n_colors);
 }
 	
-void video_set_gamma(int n_colors)
+void video_set_gamma(monitor_desc * monitor, int n_colors)
 {
-	monitor_desc * monitor = VideoMonitors[0];
 	uint8 gamma[256 * 3];
 	for (int c = 0; c < n_colors; c++) {
 		gamma[c*3 + 0] = mac_gamma[c].red;
@@ -2280,6 +2278,7 @@ void SDL_monitor_desc::set_palette(uint8 *pal, int num_in)
 {
 	
 	const VIDEO_MODE &mode = get_current_mode();
+	D(bug("SDL_monitor_desc::set_palette(pal, %d)\n", num_in));
 	
 	LOCK_PALETTE;
 

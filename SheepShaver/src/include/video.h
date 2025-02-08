@@ -230,8 +230,8 @@ extern void VideoVBL(void);
 extern void VideoInstallAccel(void);
 extern void VideoQuitFullScreen(void);
 
-extern void video_set_palette(void);
-extern void video_set_gamma(int n_colors);
+extern void video_set_palette(monitor_desc *);
+extern void video_set_gamma(monitor_desc *, int n_colors);
 extern void video_set_cursor(void);
 extern bool video_can_change_cursor(void);
 extern int16 video_mode_change(monitor_desc * monitor, VidLocals *csSave, uint32 ParamPtr);
