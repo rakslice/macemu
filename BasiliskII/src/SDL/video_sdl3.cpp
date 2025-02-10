@@ -85,7 +85,6 @@ enum {
 	DISPLAY_SCREEN = DIS_SCREEN,					// fullscreen display
 	DISPLAY_CHROMAKEY = DIS_CHROMAKEY
 };
-extern int display_type;							// See enum above
 #else
 enum {
 	DISPLAY_WINDOW,									// windowed display
@@ -250,12 +249,12 @@ protected:
 	//int screen_depth;                   // Depth of current screen
 
 	bool redraw_thread_active;            // Flag: Redraw thread installed
-	#ifndef USE_CPU_EMUL_SERVICES
+#ifndef USE_CPU_EMUL_SERVICES
 	volatile bool redraw_thread_cancel;   // Flag: Cancel Redraw thread
 	SDL_Thread *redraw_thread;            // Redraw thread
 	volatile bool thread_stop_req;
 	volatile bool thread_stop_ack;        // Acknowledge for thread_stop_req
-	#endif
+#endif
 
 #ifdef SHEEPSHAVER
 	SDL_Cursor *sdl_cursor;               // Copy of Mac cursor
@@ -878,7 +877,7 @@ SDL_Surface * SDLDisplayInstance::init_sdl_video(int width, int height, int dept
         delete_sdl_video_surfaces();
     }
     
-	bool want_fullscreen = flags & SDL_WINDOW_FULLSCREEN;
+	bool want_fullscreen = (flags & SDL_WINDOW_FULLSCREEN) != 0;
 
 	float m = get_mag_rate();
 
@@ -1875,6 +1874,8 @@ bool VideoInit(bool classic)
 			break;
 		}
 
+		// If we had a separate prefs configured resolution for each monitor, we would need to have a separate
+		// value for each here instead of default_width/default_height
 		int cur_width = default_width;
 		int cur_height = default_height;
 		apply_max_display_dimensions(display_num, cur_width, cur_height);
@@ -1961,7 +1962,7 @@ bool VideoInit(bool classic)
 
 		D(bug("Return get_customized_color_depth %d\n", color_depth));
 
-		// Create SDL_monitor_desc for this (the only) display
+		// Create SDL_monitor_desc for this display
 		SDL_monitor_desc *monitor = new SDL_monitor_desc(VideoModes, (video_depth)color_depth, default_id, monitor_desc_num++);
 		if (!monitor) {	ret = false; break;	}
 		if (!monitor->sdl_display.init_locks()) { delete monitor; ret = false; break; }
@@ -1974,6 +1975,7 @@ bool VideoInit(bool classic)
 	}
 
 	if (!ret) {
+		// Cleanup partially initialized monitors
 		for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); i++) {
 			SDL_monitor_desc *monitor = static_cast<SDL_monitor_desc *>(*(i));
 			monitor->video_close();
@@ -2205,7 +2207,7 @@ void VideoVBL(void)
 
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
 		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
-		if (sdm->sdl_display.drv()->init_ok)
+		if (sdm && sdm->sdl_display.drv() && sdm->sdl_display.drv()->init_ok) {
 			sdm->sdl_display.interrupt_time();
 	}
 
@@ -2213,7 +2215,7 @@ void VideoVBL(void)
 	// we are suspended when the user presses Ctrl-Tab)
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
 		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
-		if (sdm->sdl_display.drv()->init_ok) {
+		if (sdm && sdm->sdl_display.drv() && sdm->sdl_display.drv()->init_ok) {
 			sdm->sdl_display.UNLOCK_FRAME_BUFFER();
 			sdm->sdl_display.LOCK_FRAME_BUFFER();
 		}
@@ -2222,9 +2224,10 @@ void VideoVBL(void)
 	// Execute video VBL
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
 		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
-		if (sdm->sdl_display.drv()->init_ok)
+		if (sdm && sdm->sdl_display.drv() && sdm->sdl_display.drv()->init_ok) {
 			if (sdm->interruptsEnabled())
 				VSLDoInterruptService(sdm->vslServiceID());
+		}
 	}
 }
 #else
@@ -2791,8 +2794,10 @@ static void toggle_all_fullscreen() {
 	int num = 0;
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
 		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
-		D(bug("Set toggle fullscreen %d\n", num));
-		sdm->sdl_display.set_toggle_fullscreen();
+		if (sdm) {
+			D(bug("Set toggle fullscreen %d\n", num));
+			sdm->sdl_display.set_toggle_fullscreen();
+		}
 		num ++;
 	}
 }
@@ -2807,7 +2812,7 @@ static SDLDisplayInstance * display_instance_for_windowID(SDL_WindowID win_id)
 {
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
 		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
-		if (sdm->sdl_display.has_window_id(win_id))
+		if (sdm && sdm->sdl_display.has_window_id(win_id))
 			return &sdm->sdl_display;
 	}
 	return NULL;
@@ -3004,6 +3009,7 @@ static void handle_events(void)
 // Static display update (fixed frame rate, but incremental)
 static void update_display_static(driver_base *drv)
 {
+	if (!drv || !drv->init_ok) return;
 	// Incremental update code
 	int wide = 0, high = 0;
 	uint32 x1, x2, y1, y2;
@@ -3163,6 +3169,7 @@ static void update_display_static(driver_base *drv)
 // XXX use NQD bounding boxes to help detect dirty areas?
 static void update_display_static_bbox(driver_base *drv)
 {
+	if (!drv || !drv->init_ok) return;
 	const VIDEO_MODE &mode = drv->mode;
 	bool blit = (int)VIDEO_MODE_DEPTH == VIDEO_DEPTH_16BIT;
 
@@ -3245,8 +3252,8 @@ static inline void possibly_quit_dga_mode()
 
 		for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
 			SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
-
-			sdm->emergency_stop();
+			if (sdm)
+				sdm->emergency_stop();
 		}
 	}
 }
@@ -3450,7 +3457,7 @@ int SDLDisplayInstance::instance_redraw_func()
 
 #if DEBUG
 	uint64 end = GetTicks_usec();
-	D(bug("%" PRId64 " refreshes in %" PRId64" usec = %f refreshes/sec\n", ticks, end - start, ticks * 1000000.0 / (end - start)));
+	D(bug("%" PRId64 " refreshes in %" PRId64 " usec = %f refreshes/sec\n", ticks, end - start, ticks * 1000000.0 / (end - start)));
 #endif
 	return 0;
 }
