@@ -2004,9 +2004,9 @@ void VideoExit(void)
 	vector<monitor_desc *>::iterator i, end = VideoMonitors.end();
 	for (i = VideoMonitors.begin(); i != end; ++i) {
 		SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(*i);
+		sdm->video_close();
 		sdm->sdl_display.shutdown_sdl_video();
 		sdm->sdl_display.destroy_locks();
-		sdm->video_close();
 	}
 
 	// Destroy locks
