@@ -70,6 +70,7 @@
 #include "video_blit.h"
 #include "vm_alloc.h"
 #include "cdrom.h"
+#include "clip.h"
 
 #define DEBUG 0
 #include "debug.h"

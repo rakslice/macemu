@@ -789,7 +789,7 @@ if [[ "x$WANT_SDL_VIDEO" = "xyes" ]]; then
     EXTRASYSSRCS="$EXTRASYSSRCS ../MacOSX/utils_macosx.mm"
     CPPFLAGS="$CPPFLAGS -I../MacOSX"
   else
-    EXTRASYSSRCS="$EXTRASYSSRCS ../dummy/clip_dummy.cpp"
+    EXTRASYSSRCS="$EXTRASYSSRCS ../SDL/clip_sdl.cpp"
   fi
 else
   VIDEOSRCS="video_x.cpp"
