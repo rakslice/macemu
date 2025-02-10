@@ -75,7 +75,8 @@ static monitor_desc *find_monitor(int16 refNum)
 }
 
 
-monitor_desc::monitor_desc(const vector<VideoInfo> &available_modes, video_depth default_depth, uint32 default_id) : modes(available_modes), refNum(0), csSave(NULL) {
+monitor_desc::monitor_desc(const vector<VideoInfo> &available_modes, video_depth default_depth, uint32 default_id) : modes(available_modes),
+		refNum(0), csSave(NULL), screen_base(0), display_type(DIS_INVALID), max_custom_id(APPLE_CUSTOM) {
 	// Figure out largest mode value
 	for (int i = 0; i < modes.size(); i++) {
 		uint32 id = modes[i].viAppleID;

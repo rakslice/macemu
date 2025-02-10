@@ -96,6 +96,7 @@ enum {
 
 // Display clone related state
 struct DisplayClone {
+	DisplayClone(SDL_Window * w, SDL_Renderer * r, SDL_Texture * t, int d) : window(w), renderer(r), texture(t), display_num(d) { }
 	SDL_Window * window;
 	SDL_Renderer * renderer;
 	SDL_Texture * texture;
@@ -174,13 +175,46 @@ public:
 	void set_cursor();
 #endif
 
+	SDLDisplayInstance() : sdl_palette(NULL),
+							sdl_palette_changed(false),
+							sdl_update_video_mutex(NULL),
+							tick_counter(0),
+							Screen_blit(0),
+							frame_buffer_lock(NULL),
+							sdl_window(NULL),
+							host_surface(NULL),
+							guest_surface(NULL),
+							sdl_renderer(NULL),
+							sdl_renderer_thread_id(0),
+							sdl_texture(NULL),
+							redraw_thread_active(false),
+#ifndef USE_CPU_EMUL_SERVICES
+							redraw_thread(NULL),
+							thread_stop_req(false),
+							thread_stop_ack(false),
+#endif
+#ifdef SHEEPSHAVER
+							sdl_cursor(NULL),
+#endif
+							toggle_fullscreen(false),
+							_drv(NULL),
+							the_buffer(NULL),
+							the_buffer_copy(NULL),
+							display_type(DISPLAY_WINDOW)
+	{
+		sdl_update_video_rect.x = 0;
+		sdl_update_video_rect.y = 0;
+		sdl_update_video_rect.w = 0;
+		sdl_update_video_rect.h = 0;
+	}
+
 	SDL_Renderer * renderer() const { return sdl_renderer; }
 
-	SDL_Palette *sdl_palette = NULL;				// Color palette to be used as CLUT and gamma table
-	bool sdl_palette_changed = false;			// Flag: Palette changed, redraw thread must set new colors
+	SDL_Palette *sdl_palette;				// Color palette to be used as CLUT and gamma table
+	bool sdl_palette_changed;			// Flag: Palette changed, redraw thread must set new colors
 
-	SDL_Rect sdl_update_video_rect = {0,0,0,0};  // Union of all rects to update, when updating sdl_texture
-	SDL_Mutex * sdl_update_video_mutex = NULL;   // Mutex to protect sdl_update_video_rect
+	SDL_Rect sdl_update_video_rect;  // Union of all rects to update, when updating sdl_texture
+	SDL_Mutex * sdl_update_video_mutex;   // Mutex to protect sdl_update_video_rect
 
 	void set_driver_base(driver_base * new_drv) { _drv = new_drv; }
 	driver_base * drv() const { return _drv; }
@@ -200,41 +234,41 @@ public:
 	void pause_redraw();
 	void resume_redraw();
 
-	uint32 tick_counter = 0;
+	uint32 tick_counter;
 
-	Screen_blit_func Screen_blit = 0;
+	Screen_blit_func Screen_blit;
 protected:
 	// Mutex to protect frame buffer
-	SDL_Mutex *frame_buffer_lock = NULL;
+	SDL_Mutex *frame_buffer_lock;
 
-	SDL_Window * sdl_window = NULL;				        // Wraps an OS-native window
-	SDL_Surface * host_surface = NULL;			// Surface in host-OS display format
-	SDL_Surface * guest_surface = NULL;			// Surface in guest-OS display format
-	SDL_Renderer * sdl_renderer = NULL;			// Handle to SDL2 renderer
-	SDL_ThreadID sdl_renderer_thread_id = 0;		// Thread ID where the SDL_renderer was created, and SDL_renderer ops should run (for compatibility w/ d3d9)
-	SDL_Texture * sdl_texture = NULL;			// Handle to a GPU texture, with which to draw guest_surface to
-	//int screen_depth;							// Depth of current screen
+	SDL_Window * sdl_window;              // Wraps an OS-native window
+	SDL_Surface * host_surface;           // Surface in host-OS display format
+	SDL_Surface * guest_surface;          // Surface in guest-OS display format
+	SDL_Renderer * sdl_renderer;          // Handle to SDL2 renderer
+	SDL_ThreadID sdl_renderer_thread_id;  // Thread ID where the SDL_renderer was created, and SDL_renderer ops should run (for compatibility w/ d3d9)
+	SDL_Texture * sdl_texture;            // Handle to a GPU texture, with which to draw guest_surface to
+	//int screen_depth;                   // Depth of current screen
 
-	bool redraw_thread_active = false;			// Flag: Redraw thread installed
+	bool redraw_thread_active;            // Flag: Redraw thread installed
 	#ifndef USE_CPU_EMUL_SERVICES
-	volatile bool redraw_thread_cancel;			// Flag: Cancel Redraw thread
-	SDL_Thread *redraw_thread = NULL;			// Redraw thread
-	volatile bool thread_stop_req = false;
-	volatile bool thread_stop_ack = false;		// Acknowledge for thread_stop_req
+	volatile bool redraw_thread_cancel;   // Flag: Cancel Redraw thread
+	SDL_Thread *redraw_thread;            // Redraw thread
+	volatile bool thread_stop_req;
+	volatile bool thread_stop_ack;        // Acknowledge for thread_stop_req
 	#endif
 
 #ifdef SHEEPSHAVER
-	SDL_Cursor *sdl_cursor = NULL;				// Copy of Mac cursor
+	SDL_Cursor *sdl_cursor;               // Copy of Mac cursor
 #endif
-	bool toggle_fullscreen = false;
-	driver_base *_drv = NULL;
+	bool toggle_fullscreen;
+	driver_base *_drv;
 
 
-	uint8 *the_buffer = NULL;					// Mac frame buffer (where MacOS draws into)
-	uint8 *the_buffer_copy = NULL;				// Copy of Mac frame buffer (for refreshed modes)
-	uint32 the_buffer_size;						// Size of allocated the_buffer
+	uint8 *the_buffer;                    // Mac frame buffer (where MacOS draws into)
+	uint8 *the_buffer_copy;               // Copy of Mac frame buffer (for refreshed modes)
+	uint32 the_buffer_size;               // Size of allocated the_buffer
 
-	int display_type = DISPLAY_WINDOW;			// See Display Types enum above
+	int display_type;                     // See Display Types enum above
 };
 
 static bool did_add_event_watch = false;
@@ -448,7 +482,8 @@ public:
 	SDLDisplayInstance sdl_display;
 
 	SDL_monitor_desc(const vector<VIDEO_MODE> &available_modes, video_depth default_depth, uint32 default_id, int monitor_desc_num) : monitor_desc(available_modes, default_depth, default_id),
-																																	  monitor_desc_num(monitor_desc_num)  { }
+																																	  monitor_desc_num(monitor_desc_num),
+																																	  drv(NULL) { }
 	~SDL_monitor_desc() {}
 
 	virtual void switch_to_current_mode(void);
@@ -461,7 +496,7 @@ public:
 	int get_display_num_pref();
 	int display_instance_num() const { return monitor_desc_num; }
 protected:
-	driver_base *drv = NULL;	// Pointer to currently used driver object
+	driver_base *drv;	// Pointer to currently used driver object
 	int monitor_desc_num;
 };
 
@@ -962,7 +997,7 @@ SDL_Surface * SDLDisplayInstance::init_sdl_video(int width, int height, int dept
 
 				SDL_Window * clone_window = SDL_CreateWindowWithProperties(sdl_props);
 				if (clone_window) {
-					clones.push_back({clone_window, NULL, NULL, clone_display_num});
+					clones.push_back(DisplayClone(clone_window, NULL, NULL, clone_display_num));
 					SDL_SyncWindow(clone_window); // needed for fullscreen
 				} else {
 					D(bug("Error creating clone SDL window\n"));

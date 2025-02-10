@@ -228,10 +228,10 @@ protected:
 	int16 refNum;		// Driver reference number
 	VidLocals *csSave;	// Pointer to driver local variables
 
-	uint32 screen_base = 0;				// Frame buffer base address
-	int cur_mode;						// Number of current video mode (index in modes vector)
-	int display_type = DIS_INVALID;		// Current display type
-	uint32 max_custom_id = APPLE_CUSTOM;
+	uint32 screen_base;	// Frame buffer base address
+	int cur_mode;		// Number of current video mode (index in modes vector)
+	int display_type;	// Current display type
+	uint32 max_custom_id;
 };
 
 // Vector of pointers to available monitor descriptions, filled by VideoInit()
