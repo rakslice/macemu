@@ -2719,6 +2719,9 @@ static int event2keycode(SDL_KeyboardEvent const &key, bool key_down)
 
 void SDLDisplayInstance::force_complete_window_refresh()
 {
+	if (!drv()) return;
+	if (!drv()->init_ok) return;
+
 	if (display_type == DISPLAY_WINDOW) {
 #ifdef ENABLE_VOSF
 		if (use_vosf) {	// VOSF refresh
