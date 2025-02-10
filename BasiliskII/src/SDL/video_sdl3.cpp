@@ -2734,7 +2734,7 @@ void SDLDisplayInstance::force_complete_window_refresh()
 		}
 #endif
 		// Ensure each byte of the_buffer_copy differs from the_buffer to force a full update.
-		const VIDEO_MODE &mode = VideoMonitors[0]->get_current_mode();
+		const VIDEO_MODE &mode = drv()->monitor.get_current_mode();
 		const int len = VIDEO_MODE_ROW_BYTES * VIDEO_MODE_Y;
 		for (int i = 0; i < len; i++)
 			the_buffer_copy[i] = !the_buffer[i];
