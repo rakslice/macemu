@@ -2050,7 +2050,7 @@ void VideoExit(void)
 	// Close displays
 	vector<monitor_desc *>::iterator i, end = VideoMonitors.end();
 	for (i = VideoMonitors.begin(); i != end; ++i) {
-		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(*i);
 		sdm->video_close();
 		sdm->sdl_display.shutdown_sdl_video();
 		sdm->sdl_display.destroy_locks();
@@ -2206,7 +2206,7 @@ void VideoVBL(void)
 		QuitEmulator();
 
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
-		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(*i);
 		if (sdm && sdm->sdl_display.drv() && sdm->sdl_display.drv()->init_ok) {
 			sdm->sdl_display.interrupt_time();
 	}
@@ -2214,7 +2214,7 @@ void VideoVBL(void)
 	// Temporarily give up frame buffer lock (this is the point where
 	// we are suspended when the user presses Ctrl-Tab)
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
-		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(*i);
 		if (sdm && sdm->sdl_display.drv() && sdm->sdl_display.drv()->init_ok) {
 			sdm->sdl_display.UNLOCK_FRAME_BUFFER();
 			sdm->sdl_display.LOCK_FRAME_BUFFER();
@@ -2223,7 +2223,7 @@ void VideoVBL(void)
 
 	// Execute video VBL
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
-		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(*i);
 		if (sdm && sdm->sdl_display.drv() && sdm->sdl_display.drv()->init_ok) {
 			if (sdm->interruptsEnabled())
 				VSLDoInterruptService(sdm->vslServiceID());
@@ -2247,7 +2247,7 @@ void VideoInterrupt(void)
 #endif
 
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
-		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(*i);
 		if (sdm && sdm->sdl_display.drv() && sdm->sdl_display.drv()->init_ok)
 			sdm->sdl_display.interrupt_time();
 	}
@@ -2255,7 +2255,7 @@ void VideoInterrupt(void)
 	// Temporarily give up frame buffer lock (this is the point where
 	// we are suspended when the user presses Ctrl-Tab)
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
-		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(*i);
 		if (sdm && sdm->sdl_display.drv() && sdm->sdl_display.drv()->init_ok) {
 			sdm->sdl_display.UNLOCK_FRAME_BUFFER();
 			sdm->sdl_display.LOCK_FRAME_BUFFER();
@@ -2522,7 +2522,7 @@ bool video_can_change_cursor(void)
 void video_set_cursor(void)
 {
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
-		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(*i);
 		if (sdm)
 			sdm->sdl_display.set_cursor();
 	}
@@ -2783,7 +2783,7 @@ static bool SDLCALL on_sdl_event_generated(void *userdata, SDL_Event *event)
 
 static driver_base * first_drv() {
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
-		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(*i);
 		return sdm->sdl_display.drv();
 	}
 	return NULL;
@@ -2793,7 +2793,7 @@ static driver_base * first_drv() {
 static void toggle_all_fullscreen() {
 	int num = 0;
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
-		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(*i);
 		if (sdm) {
 			D(bug("Set toggle fullscreen %d\n", num));
 			sdm->sdl_display.set_toggle_fullscreen();
@@ -2811,7 +2811,7 @@ bool SDLDisplayInstance::has_window_id(SDL_WindowID win_id) const
 static SDLDisplayInstance * display_instance_for_windowID(SDL_WindowID win_id)
 {
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
-		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(*i);
 		if (sdm && sdm->sdl_display.has_window_id(win_id))
 			return &sdm->sdl_display;
 	}
@@ -3251,7 +3251,7 @@ static inline void possibly_quit_dga_mode()
 		quit_full_screen = false;
 
 		for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
-			SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+			SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(*i);
 			if (sdm)
 				sdm->emergency_stop();
 		}
@@ -3400,7 +3400,7 @@ inline void SDLDisplayInstance::do_video_refresh(void)
 void VideoRefresh(void)
 {
 	for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); ++i) {
-		SDL_monitor_desc * sdm = dynamic_cast<SDL_monitor_desc *>(*i);
+		SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(*i);
 		if (sdm && sdm->sdl_display.drv() && sdm->sdl_display.drv()->init_ok)
 			sdm->sdl_display.VideoRefresh();
 	}
