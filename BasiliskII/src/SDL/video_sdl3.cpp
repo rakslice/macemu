@@ -1939,7 +1939,7 @@ bool VideoInit(bool classic)
 	}
 
 	if (!ret) {
-		for (auto i = VideoMonitors.begin(); i != VideoMonitors.end(); i++) {
+		for (vector<monitor_desc *>::iterator i = VideoMonitors.begin(); i != VideoMonitors.end(); i++) {
 			SDL_monitor_desc *monitor = static_cast<SDL_monitor_desc *>(*(i));
 			monitor->video_close();
 			monitor->sdl_display.destroy_locks();
