@@ -93,7 +93,7 @@ static monitor_desc *find_monitor(uint8 id, int16 refNum)
 	for (i = VideoMonitors.begin(); i != end; ++i) {
 		if ((*i)->get_slot_id() == id) {
 			if ((*i)->getRefNum() == 0)
-				bug("Assigning slot %d refNum %d\n", id, refNum);
+				D(bug("Assigning slot %d refNum %d\n", id, refNum));
 				(*i)->setRefNum(refNum);
 			return *i;
 		}
