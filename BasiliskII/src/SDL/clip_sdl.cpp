@@ -29,6 +29,7 @@
 #include "debug.h"
 
 #include <SDL.h>
+#include <algorithm>
 
 class TextCache {
 public:
