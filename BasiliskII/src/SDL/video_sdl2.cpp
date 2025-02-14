@@ -1346,7 +1346,7 @@ void SDLDisplayInstance::init_buffers(int pitch, int aligned_height, int monitor
 	use_vosf = true;
 	// Allocate memory for frame buffer (SIZE is extended to page-boundary)
 	the_buffer_size = page_extend((aligned_height + 2) * pitch);
-	the_buffer = (uint8 *)vm_acquire_framebuffer(the_buffer_size);
+	the_buffer = (uint8 *)vm_acquire_framebuffer(the_buffer_size, vm_acquire_fb);
 	the_buffer_copy = (uint8 *)malloc(the_buffer_size);
 	D(bug("the_buffer = %p, the_buffer_copy = %p, the_host_buffer = %p\n", the_buffer, the_buffer_copy, the_host_buffer));
 
