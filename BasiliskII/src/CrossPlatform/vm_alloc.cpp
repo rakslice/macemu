@@ -276,7 +276,7 @@ void * vm_acquire(size_t size, int options)
 
 #if defined(HAVE_MACH_VM)
 	// vm_allocate() returns a zero-filled memory region
-	kern_return_t ret_code = vm_allocate(mach_task_self(), (vm_address_t *)&addr, reserved_buf ? size : size + RESERVED_SIZE, TRUE);
+	kern_return_t ret_code = vm_allocate(mach_task_self(), (vm_address_t *)&addr, reserved_buf ? size : size + RESERVED_SIZE * get_num_monitors(), TRUE);
 	if (ret_code != KERN_SUCCESS) {
 		errno = vm_error(ret_code);
 		return VM_MAP_FAILED;
