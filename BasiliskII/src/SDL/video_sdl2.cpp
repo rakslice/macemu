@@ -2169,7 +2169,7 @@ static bool is_fullscreen(SDL_Window * window)
 	// involves fullscreen/windowed toggles via window-manager UI controls).
 	// Until it does, or adds a facility to do so, we'll use a platform-specific
 	// code path to detect fullscreen changes.
-	return is_fullscreen_osx(sdl_window);
+	return is_fullscreen_osx(window);
 #else
 	if (!window) {
 		return false;
