@@ -104,6 +104,8 @@ struct DisplayClone {
 	SDL_Renderer * renderer;
 	SDL_Texture * texture;
 	int display_num;
+
+	DisplayClone(SDL_Window * w, SDL_Renderer * r, SDL_Texture * t, int d) : window(w), renderer(r), texture(t), display_num(d) { }
 };
 
 // Constants
@@ -957,7 +959,7 @@ SDL_Surface * SDLDisplayInstance::init_sdl_video(int width, int height, int dept
 
 			SDL_Window * clone_window = SDL_CreateWindow("", x, y, window_width, window_height, window_flags);
 			if (clone_window) {
-				clones.push_back({clone_window, NULL, NULL, clone_display_num});
+				clones.push_back(DisplayClone(clone_window, NULL, NULL, clone_display_num));
 			} else {
 				D(bug("Error creating clone SDL window\n"));
 			}
