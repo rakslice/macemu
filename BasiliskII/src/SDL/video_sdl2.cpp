@@ -50,6 +50,7 @@
 #include <vector>
 #include <string>
 #include <math.h>
+#include <map>
 
 #ifdef __MACOSX__
 #include "utils_macosx.h"
@@ -339,7 +340,19 @@ extern void SysMountFirstFloppy(void);
 static void *vm_acquire_framebuffer(uint32 size, void * & fb)
 {
 #if defined(HAVE_MACH_VM) || defined(HAVE_MMAP_VM) && defined(__aarch64__)
-	return vm_acquire_reserved(size);
+	static int next_fb_num = 0;
+	static std::map<void *, int> fb_assignments;
+	D(bug("doing vm_acquire_framebuffer(%d, %p)\n", size, fb));
+	if (fb != VM_MAP_FAILED) {
+		std::map<void *, int>::iterator i = fb_assignments.find(fb);
+		if (i != fb_assignments.end())
+			return vm_acquire_reserved(size, i->second);
+	}
+	int fb_num = next_fb_num++;
+	D(bug("assigning new num %d\n", fb_num));
+	fb = vm_acquire_reserved(size, fb_num);
+	fb_assignments.insert(std::pair<void *, int>(fb, fb_num));
+	return fb;
 #else
 	// always try to reallocate framebuffer at the same address
 	if (fb != VM_MAP_FAILED) {

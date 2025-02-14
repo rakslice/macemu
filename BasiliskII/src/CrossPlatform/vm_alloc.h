@@ -99,7 +99,7 @@ extern void vm_exit(void);
 
 extern void * vm_acquire(size_t size, int options = VM_MAP_DEFAULT);
 
-extern void * vm_acquire_reserved(size_t size);
+extern void * vm_acquire_reserved(size_t size, int num);
 
 extern int vm_init_reserved(void * host_address);
 

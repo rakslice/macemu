@@ -39,6 +39,8 @@
 #include <limits.h>
 #include <assert.h>
 #include "vm_alloc.h"
+#include "sysdeps.h"
+#include "prefs.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
 #include <sys/utsname.h>
@@ -230,12 +232,23 @@ void vm_exit(void)
 static void *reserved_buf;
 static const size_t RESERVED_SIZE = 80 * 1024 * 1024; // for 6K Retina
 
-void *vm_acquire_reserved(size_t size) {
+static int get_num_monitors();
+
+void *vm_acquire_reserved(size_t size, int num) {
 	assert(reserved_buf && size <= RESERVED_SIZE);
-	return reserved_buf;
+	assert(num < get_num_monitors());
+	return (void *)((uint8 *)reserved_buf + num * RESERVED_SIZE);
+}
+
+static int get_num_monitors() {
+	if (PrefsFindInt32("add_display") > 0) {
+		return 2;
+	}
+	return 1;
 }
 
 int vm_init_reserved(void *hostAddress) {
+    int num_monitors = get_num_monitors();
     int result = vm_acquire_fixed(hostAddress, RESERVED_SIZE);
     if (result >= 0)
         reserved_buf = hostAddress;
