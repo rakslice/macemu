@@ -28,3 +28,22 @@ ppc-dyngen-ops-x86_64_macos.hpp
 
 # Generated GLib resource files
 g_resource.cpp
+
+# Dev and build tool files
+# clangd
+/compile_commands.json
+/.cache
+
+# Copied builds
+/SheepShaver.*
+
+# Other temporary dev work files
+/*.log
+
+# Configs
+/*.ss
+
+# Use-related files
+/startup.wav
+/.sheepshaver_nvram
+

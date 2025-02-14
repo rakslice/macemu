@@ -29,3 +29,30 @@ g_resource.cpp
 
 patches/*
 .pc*
+
+# sheep_net stuff
+/Linux/NetDriver/.*.cmd
+/Linux/NetDriver/Module.symvers
+/Linux/NetDriver/modules.order
+/Linux/NetDriver/sheep_net.ko
+/Linux/NetDriver/sheep_net.mod
+/Linux/NetDriver/sheep_net.mod.c
+
+
+# Dev and build tool files
+# clangd
+/compile_commands.json
+/.cache
+
+# Copied builds
+/BasiliskII.*
+
+# Other temporary dev work files
+/*.log
+
+# Configs
+/*.b2
+
+# Use-related files
+/startup.wav
+/.basilisk_ii_xpram
