@@ -235,9 +235,10 @@ ssize_t ConvertRGBAToPICT(uint8_t *buf, unsigned long bufSize, uint8_t *rgbaPixe
 		ssize_t cmpLength;
 		uint16_t j;
 
+		// Planarize the row, with the planes in a different order than the channel values in the pixel
 		for (j = 0; j < width; j++) {
-			row[j] = rgbaPixels[i * bytesPerRow + j * bytesPerPixel + 3];
-			row[width + j] = rgbaPixels[i * bytesPerRow + j * bytesPerPixel];
+			row[            j] = rgbaPixels[i * bytesPerRow + j * bytesPerPixel + 3];
+			row[width     + j] = rgbaPixels[i * bytesPerRow + j * bytesPerPixel    ];
 			row[width * 2 + j] = rgbaPixels[i * bytesPerRow + j * bytesPerPixel + 1];
 			row[width * 3 + j] = rgbaPixels[i * bytesPerRow + j * bytesPerPixel + 2];
 		}
