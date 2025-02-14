@@ -22,7 +22,7 @@ extern "C" {
  * However, this usually just means the buffer wasn't large enough.
  */
 
-ssize_t ConvertRGBAToPICT(uint8_t *buf, unsigned long bufSize, uint8_t *rgbaPixels, uint16_t width, uint16_t height);
+ssize_t ConvertRGBAToPICT(uint8_t *buf, unsigned long bufSize, const uint8_t *rgbaPixels, uint16_t width, uint16_t height);
 
 #ifdef __cplusplus
 }

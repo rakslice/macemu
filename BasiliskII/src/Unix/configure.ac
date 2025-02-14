@@ -913,7 +913,7 @@ if [[ "x$WANT_SDL_VIDEO" = "xyes" ]]; then
       EXTRASYSSRCS="$EXTRASYSSRCS ../Windows/clip_windows.cpp"
       ;;
     *)
-      EXTRASYSSRCS="$EXTRASYSSRCS ../SDL/clip_sdl.cpp"
+      EXTRASYSSRCS="$EXTRASYSSRCS ../SDL/clip_sdl.cpp ../pict.c"
       ;;
     esac
   fi
