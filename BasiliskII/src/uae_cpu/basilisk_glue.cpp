@@ -33,6 +33,10 @@
 #include "compiler/compemu.h"
 
 
+// Set this to 1 to have Execute68k and Execute68kTrap save and restore the previous registers
+#define SAVE_PREVIOUS_REGISTERS 0
+
+
 // RAM and ROM pointers
 uint32 RAMBaseMac = 0;		// RAM base (Mac address space) gb-- initializer is important
 uint8 *RAMBaseHost;			// RAM base (host address space)
@@ -173,6 +177,23 @@ int intlev(void)
 }
 
 
+void SaveRegisters(struct M68kRegisters *r) {
+	int i;
+	for (i=0; i<8; i++)
+		r->d[i] = m68k_dreg(regs, i);
+	for (i=0; i<7; i++)
+		r->a[i] = m68k_areg(regs, i);
+}
+
+void LoadRegisters(struct M68kRegisters *r) {
+	int i;
+	for (i=0; i<8; i++)
+		m68k_dreg(regs, i) = r->d[i];
+	for (i=0; i<7; i++)
+		m68k_areg(regs, i) = r->a[i];
+}
+
+
 /*
  *  Execute MacOS 68k trap
  *  r->a[7] and r->sr are unused!
@@ -181,15 +202,17 @@ int intlev(void)
 void Execute68kTrap(uint16 trap, struct M68kRegisters *r)
 {
 	int i;
+	M68kRegisters previous_registers;
 
 	// Save old PC
 	uaecptr oldpc = m68k_getpc();
 
+#if SAVE_PREVIOUS_REGISTERS
+	SaveRegisters(&previous_registers);
+#endif
+
 	// Set registers
-	for (i=0; i<8; i++)
-		m68k_dreg(regs, i) = r->d[i];
-	for (i=0; i<7; i++)
-		m68k_areg(regs, i) = r->a[i];
+	LoadRegisters(r);
 
 	// Push trap and EXEC_RETURN on stack
 	m68k_areg(regs, 7) -= 2;
@@ -211,10 +234,12 @@ void Execute68kTrap(uint16 trap, struct M68kRegisters *r)
 	fill_prefetch_0();
 
 	// Get registers
-	for (i=0; i<8; i++)
-		r->d[i] = m68k_dreg(regs, i);
-	for (i=0; i<7; i++)
-		r->a[i] = m68k_areg(regs, i);
+	SaveRegisters(r);
+
+#if SAVE_PREVIOUS_REGISTERS
+	LoadRegisters(&previous_registers);
+#endif
+
 	quit_program = false;
 }
 
@@ -228,15 +253,17 @@ void Execute68kTrap(uint16 trap, struct M68kRegisters *r)
 void Execute68k(uint32 addr, struct M68kRegisters *r)
 {
 	int i;
+	M68kRegisters previous_registers;
 
 	// Save old PC
 	uaecptr oldpc = m68k_getpc();
 
+#if SAVE_PREVIOUS_REGISTERS
+	SaveRegisters(&previous_registers);
+#endif
+
 	// Set registers
-	for (i=0; i<8; i++)
-		m68k_dreg(regs, i) = r->d[i];
-	for (i=0; i<7; i++)
-		m68k_areg(regs, i) = r->a[i];
+	LoadRegisters(r);
 
 	// Push EXEC_RETURN and faked return address (points to EXEC_RETURN) on stack
 	m68k_areg(regs, 7) -= 2;
@@ -258,9 +285,9 @@ void Execute68k(uint32 addr, struct M68kRegisters *r)
 	fill_prefetch_0();
 
 	// Get registers
-	for (i=0; i<8; i++)
-		r->d[i] = m68k_dreg(regs, i);
-	for (i=0; i<7; i++)
-		r->a[i] = m68k_areg(regs, i);
+	SaveRegisters(r);
+#if SAVE_PREVIOUS_REGISTERS
+	LoadRegisters(&previous_registers);
+#endif
 	quit_program = false;
 }
