@@ -249,7 +249,7 @@ static int get_num_monitors() {
 
 int vm_init_reserved(void *hostAddress) {
     int num_monitors = get_num_monitors();
-    int result = vm_acquire_fixed(hostAddress, RESERVED_SIZE);
+    int result = vm_acquire_fixed(hostAddress, RESERVED_SIZE * num_monitors);
     if (result >= 0)
         reserved_buf = hostAddress;
     return result;
