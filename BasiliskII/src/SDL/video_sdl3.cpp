@@ -2210,6 +2210,7 @@ void VideoVBL(void)
 		SDL_monitor_desc * sdm = static_cast<SDL_monitor_desc *>(*i);
 		if (sdm && sdm->sdl_display.drv() && sdm->sdl_display.drv()->init_ok) {
 			sdm->sdl_display.interrupt_time();
+		}
 	}
 
 	// Temporarily give up frame buffer lock (this is the point where
