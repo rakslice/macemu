@@ -52,6 +52,10 @@ prefs_desc platform_prefs_items[] = {
 #ifdef USE_SDL_VIDEO
 	{"sdlrender", TYPE_STRING, false,      "SDL_Renderer driver (\"auto\", \"software\" (may be faster), etc.)"},
 	{"sdl_vsync", TYPE_BOOLEAN, false,     "Make SDL_Renderer vertical sync frames to host (eg. with software renderer)"},
+	{"display_num", TYPE_INT32, false,     "Display to use, starting from 1. 0=automatic"},
+	{"clone_to", TYPE_INT32, false,        "Display to show a second copy of the screen on, starting from 1. 0=off"},
+	{"add_display", TYPE_INT32, false,     "Display to show second monitor on, starting from 1. 0=off"},
+	{"add_mode", TYPE_STRING, true,        "Add a custom display mode, in the form width/height"},
 #endif
 	{"reservewindowskey", TYPE_BOOLEAN, false,      "block Windows key from activating start menu"},
 
