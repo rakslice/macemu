@@ -101,6 +101,8 @@ extern void * vm_acquire(size_t size, int options = VM_MAP_DEFAULT);
 
 extern void * vm_acquire_reserved(size_t size, int num);
 
+extern void vm_set_num_framebuffers(int num);
+
 extern int vm_init_reserved(void * host_address);
 
 /* Allocate zero-filled memory at exactly ADDR (which must be page-aligned).

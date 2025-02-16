@@ -39,8 +39,6 @@
 #include <limits.h>
 #include <assert.h>
 #include "vm_alloc.h"
-#include "sysdeps.h"
-#include "prefs.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
 #include <sys/utsname.h>
@@ -232,23 +230,29 @@ void vm_exit(void)
 static void *reserved_buf;
 static const size_t RESERVED_SIZE = 80 * 1024 * 1024; // for 6K Retina
 
-static int get_num_monitors();
+static int num_framebuffers = 0;
+
+static int get_num_framebuffers();
+
+void vm_set_num_framebuffers(int new_val) {
+	// reserved buf not yet initialized
+	assert (reserved_buf == NULL);
+	num_framebuffers = new_val;
+}
 
 void *vm_acquire_reserved(size_t size, int num) {
 	assert(reserved_buf && size <= RESERVED_SIZE);
-	assert(num < get_num_monitors());
-	return (void *)((uint8 *)reserved_buf + num * RESERVED_SIZE);
+	assert(num < get_num_framebuffers());
+	return (void *)((char *)reserved_buf + num * RESERVED_SIZE);
 }
 
-static int get_num_monitors() {
-	if (PrefsFindInt32("add_display") > 0) {
-		return 2;
-	}
-	return 1;
+static int get_num_framebuffers() {
+	assert(num_framebuffers > 0);
+	return num_framebuffers;
 }
 
 int vm_init_reserved(void *hostAddress) {
-    int num_monitors = get_num_monitors();
+    int num_monitors = get_num_framebuffers();
     int result = vm_acquire_fixed(hostAddress, RESERVED_SIZE * num_monitors);
     if (result >= 0)
         reserved_buf = hostAddress;
@@ -276,7 +280,7 @@ void * vm_acquire(size_t size, int options)
 
 #if defined(HAVE_MACH_VM)
 	// vm_allocate() returns a zero-filled memory region
-	kern_return_t ret_code = vm_allocate(mach_task_self(), (vm_address_t *)&addr, reserved_buf ? size : size + RESERVED_SIZE * get_num_monitors(), TRUE);
+	kern_return_t ret_code = vm_allocate(mach_task_self(), (vm_address_t *)&addr, reserved_buf ? size : size + RESERVED_SIZE * get_num_framebuffers(), TRUE);
 	if (ret_code != KERN_SUCCESS) {
 		errno = vm_error(ret_code);
 		return VM_MAP_FAILED;

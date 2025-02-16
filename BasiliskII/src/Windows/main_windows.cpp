@@ -112,6 +112,10 @@ static int tick_func(void *arg);
 static void one_tick(...);
 static LRESULT CALLBACK low_level_keyboard_hook(int nCode, WPARAM wParam, LPARAM lParam);
 
+#if SDL_VERSION_ATLEAST(2,0,0)
+	extern SDL_Window * get_main_sdl_window();
+#endif
+
 
 /*
  *  Ersatz functions
@@ -656,9 +660,11 @@ static int tick_func(void *arg)
 #else
 #include <SDL_syswm.h>
 #endif
-extern SDL_Window *sdl_window;
 HWND GetMainWindowHandle(void)
 {
+#if SDL_VERSION_ATLEAST(2,0,0)
+	SDL_Window * sdl_window = get_main_sdl_window();
+#endif
 	if (!sdl_window) {
 		return NULL;
 	}
@@ -747,6 +753,9 @@ bool ChoiceAlert(const char *text, const char *pos, const char *neg)
  */
 static LRESULT CALLBACK low_level_keyboard_hook(int nCode, WPARAM wParam, LPARAM lParam)
 {
+#if SDL_VERSION_ATLEAST(2,0,0)
+	SDL_Window * sdl_window = get_main_sdl_window();
+#endif
 	// Not a relevant event, immediately pass it on
 	if (nCode != HC_ACTION)
         return CallNextHookEx(keyboard_hook, nCode, wParam, lParam);

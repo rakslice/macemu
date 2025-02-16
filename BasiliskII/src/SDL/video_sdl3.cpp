@@ -217,6 +217,7 @@ public:
 
 	void set_driver_base(driver_base * new_drv) { _drv = new_drv; }
 	driver_base * drv() const { return _drv; }
+	SDL_Window * get_sdl_window() { return sdl_window; }
 	void set_toggle_fullscreen() { toggle_fullscreen = true; }
 	uint8 *host_buffer() const { return the_buffer; }
 	uint8 *host_buffer_copy() const { return the_buffer_copy; }
@@ -2789,6 +2790,14 @@ static driver_base * first_drv() {
 	return NULL;
 }
 
+
+SDL_Window * get_main_sdl_window() {
+		if (VideoMonitors.begin() == VideoMonitors.end()) {
+			return NULL;
+		} else {
+			return static_cast<SDL_monitor_desc *>(*VideoMonitors.begin())->sdl_display.get_sdl_window();
+		}
+}
 
 static void toggle_all_fullscreen() {
 	int num = 0;

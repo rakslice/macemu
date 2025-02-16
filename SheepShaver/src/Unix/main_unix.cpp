@@ -306,6 +306,8 @@ extern "C" int atomic_or(int *var, int v);
 extern void paranoia_check(void);
 #endif
 
+static int get_num_monitors();
+
 
 #if EMULATED_PPC
 /*
@@ -1133,6 +1135,8 @@ int main(int argc, char **argv)
 		ErrorAlert(GetString(STR_RAM_HIGHER_THAN_ROM_ERR));
 		goto quit;
 	}
+
+	vm_set_num_framebuffers(get_num_monitors());
 
 	// Create area for SheepShaver data
 	if (!SheepMem::Init()) {
@@ -2444,3 +2448,14 @@ bool ChoiceAlert(const char *text, const char *pos, const char *neg)
 	printf(GetString(STR_SHELL_WARNING_PREFIX), text);
 	return false;	//!!
 }
+
+
+/*
+ * Get the number of monitors that will be configured
+ */
+static int get_num_monitors() {
+	if (PrefsFindInt32("add_display") > 0) {
+		return 2;
+	}
+	return 1;
+ }

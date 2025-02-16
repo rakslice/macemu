@@ -172,6 +172,7 @@ public:
 	void destroy_locks();
 	void set_driver_base(driver_base * new_drv) { _drv = new_drv; }
 	driver_base * drv() const { return _drv; }
+	SDL_Window * get_sdl_window() { return sdl_window; }
 	void LOCK_FRAME_BUFFER() { SDL_LockMutex(frame_buffer_lock); }
 	void UNLOCK_FRAME_BUFFER() { SDL_UnlockMutex(frame_buffer_lock); }
 
@@ -2815,6 +2816,14 @@ static driver_base * first_drv() {
 		return sdm->sdl_display.drv();
 	}
 	return NULL;
+}
+
+SDL_Window * get_main_sdl_window() {
+		if (VideoMonitors.begin() == VideoMonitors.end()) {
+			return NULL;
+		} else {
+			return static_cast<SDL_monitor_desc *>(*VideoMonitors.begin())->sdl_display.get_sdl_window();
+		}
 }
 
 

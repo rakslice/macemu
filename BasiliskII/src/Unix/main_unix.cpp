@@ -224,6 +224,7 @@ static void sigirq_handler(int sig, int code, struct sigcontext *scp);
 static void sigill_handler(int sig, int code, struct sigcontext *scp);
 extern "C" void EmulOpTrampoline(void);
 #endif
+static int get_num_monitors();
 
 // vde switch variable
 char* vde_sock;
@@ -696,6 +697,8 @@ int main(int argc, char **argv)
 #else
 	const bool can_map_all_memory = false;
 #endif
+
+	vm_set_num_framebuffers(get_num_monitors());
 
 	// Try to allocate all memory from 0x0000, if it is not known to crash
 	if (can_map_all_memory && (vm_acquire_mac_fixed(0, RAMSize + 0x100000) == 0)) {
@@ -1751,3 +1754,13 @@ bool ChoiceAlert(const char *text, const char *pos, const char *neg)
 	printf(GetString(STR_SHELL_WARNING_PREFIX), text);
 	return false;	//!!
 }
+
+/*
+ * Get the number of monitors that will be configured
+ */
+static int get_num_monitors() {
+	if (PrefsFindInt32("add_display") > 0) {
+		return 2;
+	}
+	return 1;
+ }
