@@ -220,8 +220,14 @@ void ClipExit(void)
 	ClearHostClipboardChecks();
 	last_timestamp_from_host.free();
 	last_pict_put_in_clipboard.free();
-	SDL_iconv_close(from);
-	SDL_iconv_close(to);
+	if (from) {
+		SDL_iconv_close(from);
+		from = NULL;
+	}
+	if (to) {
+		SDL_iconv_close(to);
+		to = NULL;
+	}
 }
 
 extern "C" void hexdump(char * data, int len);
