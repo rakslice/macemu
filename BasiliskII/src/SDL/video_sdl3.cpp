@@ -956,12 +956,22 @@ SDL_Surface * SDLDisplayInstance::init_sdl_video(int width, int height, int dept
 
 		int x, y;
 		if (display_num < 1) {
+			D(bug("monitor %d: choosing default position\n",  drv()->monitor.display_instance_num()));
 			x = SDL_WINDOWPOS_UNDEFINED;
 			y = SDL_WINDOWPOS_UNDEFINED;
 		} else {
 			// In SDL 3 the display indexes used with the special window position macros appear to start from 1
+			D(bug("monitor %d: choosing position on SDL display %d\n",  drv()->monitor.display_instance_num(), display_num));
+#ifdef __MACOSX__
+			// These *_UNDEFINED_DISPLAY(n) macros don't actually put the window on the correct display in Linux X11,
+			// but I'm keeping them around because MAC is allergic to CENTERED judging by the other ifdefs
 			x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num);
 			y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(display_num);
+#else
+			x = SDL_WINDOWPOS_CENTERED_DISPLAY(display_num);
+			y = SDL_WINDOWPOS_CENTERED_DISPLAY(display_num);
+#endif
+
 		}
 
 		SDL_PropertiesID sdl_props = SDL_CreateProperties();
