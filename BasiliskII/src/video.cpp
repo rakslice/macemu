@@ -433,7 +433,8 @@ void monitor_desc::switch_mode(vector<video_mode>::const_iterator it, uint32 par
 	WriteMacInt32(param + csBaseAddr, mac_frame_base);
 
 	// Patch frame buffer base address for MacOS versions <7.6
-	if (!dm_present) { // Only do this when no Display Manager seems to be present; otherwise, the screen will not get redrawn
+	if (!dm_present && slot_id == 0x80) { // Only do this when no Display Manager seems to be present; otherwise, the screen will not get redrawn
+	                                      // and only for first monitor
 		D(bug("No Display Manager, patching frame buffer base\n"));
 		WriteMacInt32(0x824, mac_frame_base);		// ScrnBase
 		WriteMacInt32(0x898, mac_frame_base);		// CrsrBase
