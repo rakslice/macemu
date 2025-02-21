@@ -305,6 +305,7 @@ static void toggle_all_fullscreen();
 static void video_refresh_window_static(SDL_monitor_desc * desc);
 static void do_power_key_shutdown();
 static void release_hotkey();
+static std::string monitor_ident(SDLDisplayInstance & monitor);
 
 // From sys_unix.cpp
 extern void SysMountFirstFloppy(void);
@@ -658,8 +659,15 @@ static void set_mac_frame_buffer(SDL_monitor_desc &monitor, int depth, bool nati
 // Set window name and class
 void SDLDisplayInstance::set_window_name() {
 	if (!sdl_window) return;
+
+	bool multi = VideoMonitors.size() > 1;
+
 	const char *title = PrefsFindString("title");
 	std::string s = title ? title : GetString(STR_WINDOW_TITLE);
+	if (multi)
+	{
+		s += " - Monitor " + monitor_ident(*this);
+	}
     if (mouse_grabbed)
     {
         s += GetString(STR_WINDOW_TITLE_GRABBED_PRE);
@@ -774,6 +782,15 @@ driver_base::driver_base(SDL_monitor_desc &m)
 	: monitor(m), mode(m.get_current_mode()), init_ok(false), s(NULL)
 {
 	m.sdl_display.clear_buffers();
+}
+
+static std::string monitor_ident(SDLDisplayInstance & sdi)
+{
+	std::string out;
+	char buf[10];
+	snprintf(buf, 10, "%d", sdi.drv()->monitor.display_instance_num() + 1);
+	out += buf;
+	return out;
 }
 
 void SDLDisplayInstance::clear_buffers() {
