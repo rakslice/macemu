@@ -304,6 +304,8 @@ static bool is_fullscreen(SDL_Window *);
 static SDLDisplayInstance * display_instance_for_windowID(SDL_WindowID win_id);
 static driver_base * first_drv();
 static void toggle_all_fullscreen();
+static void do_power_key_shutdown();
+static void release_hotkey();
 
 // From sys_unix.cpp
 extern void SysMountFirstFloppy(void);
@@ -2581,6 +2583,15 @@ static bool is_hotkey_down(SDL_KeyboardEvent const &key)
 			(cmd_down || (key.mod & SDL_KMOD_GUI) || !(hotkey & 4));
 }
 
+static void release_hotkey() {
+	int hotkey = PrefsFindInt32("hotkey");
+	if (!hotkey) hotkey = 1;
+
+	if (hotkey & 1) ADBKeyUp(0x36); // ctrl
+	if (hotkey & 2) ADBKeyUp(0x3a); // opt
+	if (hotkey & 4) ADBKeyUp(0x37); // cmd
+}
+
 static int modify_opt_cmd(int code) {
 	static bool f, c;
 	if (!f) {
@@ -2619,7 +2630,7 @@ static int event2keycode(SDL_KeyboardEvent const &key, bool key_down)
 	case SDLK_M: return 0x2e;
 	case SDLK_N: return 0x2d;
 	case SDLK_O: return 0x1f;
-	case SDLK_P: return 0x23;
+	case SDLK_P: if (is_hotkey_down(key)) {if (!key_down) { release_hotkey(); do_power_key_shutdown(); } return CODE_HOTKEY; } else return 0x23;
 	case SDLK_Q: return 0x0c;
 	case SDLK_R: return 0x0f;
 	case SDLK_S: return 0x01;
@@ -2828,6 +2839,13 @@ static SDLDisplayInstance * display_instance_for_windowID(SDL_WindowID win_id)
 	return NULL;
 }
 
+static void do_power_key_shutdown()
+{
+	if (SDL_GetModState() & (SDL_KMOD_LALT | SDL_KMOD_RALT)) return;
+	ADBKeyDown(0x7f);	// Power key
+	ADBKeyUp(0x7f);
+}
+
 static void handle_events(void)
 {
 	SDL_Event events[10];
@@ -3002,9 +3020,7 @@ static void handle_events(void)
 
 			// Window "close" widget clicked
 			case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-				if (SDL_GetModState() & (SDL_KMOD_LALT | SDL_KMOD_RALT)) break;
-				ADBKeyDown(0x7f);	// Power key
-				ADBKeyUp(0x7f);
+				do_power_key_shutdown();
 				break;
 			}
 		}
