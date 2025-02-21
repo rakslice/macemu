@@ -1351,7 +1351,7 @@ void SDLDisplayInstance::init_buffers(int pitch, int aligned_height, int monitor
 	the_buffer_size = page_extend((aligned_height + 2) * pitch);
 	the_buffer = (uint8 *)vm_acquire_framebuffer(the_buffer_size, vm_acquire_fb);
 	the_buffer_copy = (uint8 *)malloc(the_buffer_size);
-	D(bug("the_buffer = %p, the_buffer_copy = %p, the_host_buffer = %p\n", the_buffer, the_buffer_copy, the_host_buffer));
+	D(bug("monitor %d (using VOSF) the_buffer = %p, the_buffer_copy = %p, the_host_buffer = %p\n", drv()->monitor.display_instance_num(), the_buffer, the_buffer_copy, the_host_buffer));
 
 	// Check whether we can initialize the VOSF subsystem and it's profitable
 	if (!video_vosf_init(monitor)) {
@@ -1375,7 +1375,7 @@ void SDLDisplayInstance::init_buffers(int pitch, int aligned_height, int monitor
 		the_buffer_copy = (uint8 *)calloc(1, the_buffer_size);
 		the_buffer = (uint8 *)vm_acquire_framebuffer(the_buffer_size, vm_acquire_fb);
 		memset(the_buffer, 0, the_buffer_size);
-		D(bug("the_buffer = %p, the_buffer_copy = %p\n", the_buffer, the_buffer_copy));
+		D(bug("monitor %d the_buffer = %p, the_buffer_copy = %p (size 0x%x)\n", drv()->monitor.display_instance_num(), the_buffer, the_buffer_copy, the_buffer_size));
 	}
 }
 
