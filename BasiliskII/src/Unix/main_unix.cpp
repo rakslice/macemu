@@ -685,6 +685,10 @@ int main(int argc, char **argv)
 	// Initialize VM system
 	vm_init();
 
+	int num_monitors = get_num_monitors();
+	D(bug("setting up for num_monitors=%d\n", num_monitors));
+	vm_set_num_framebuffers(num_monitors);
+
 #if REAL_ADDRESSING
 	// Flag: RAM and ROM are contigously allocated from address 0
 	bool memory_mapped_from_zero = false;
@@ -697,8 +701,6 @@ int main(int argc, char **argv)
 #else
 	const bool can_map_all_memory = false;
 #endif
-
-	vm_set_num_framebuffers(get_num_monitors());
 
 	// Try to allocate all memory from 0x0000, if it is not known to crash
 	if (can_map_all_memory && (vm_acquire_mac_fixed(0, RAMSize + 0x100000) == 0)) {
